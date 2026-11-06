@@ -20,6 +20,7 @@ class Agent(ABC):
         self.llm = llm
         self.system_prompt = system_prompt
         self.config = config or Config()
+        # 对象级对话历史：只存在于当前 Agent 实例内，不等于外部长期记忆。
         self._history: list[Message] = []
     
     @abstractmethod
@@ -37,6 +38,7 @@ class Agent(ABC):
     
     def get_history(self) -> list[Message]:
         """获取历史记录"""
+        # 仅复制列表容器；其中的 Message 对象仍是原对象。
         return self._history.copy()
     
     def __str__(self) -> str:

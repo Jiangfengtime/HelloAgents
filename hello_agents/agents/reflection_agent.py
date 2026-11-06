@@ -151,6 +151,7 @@ class ReflectionAgent(Agent):
             self.memory.add_record("reflection", feedback)
 
             # b. 检查是否需要停止
+            # 注意：子串匹配会误命中“不能认为无需改进”；这是当前实现的边界。
             if "无需改进" in feedback or "no need for improvement" in feedback.lower():
                 print("\n✅ 反思认为结果已无需改进，任务完成。")
                 break

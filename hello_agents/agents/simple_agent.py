@@ -285,6 +285,7 @@ class SimpleAgent(Agent):
             response = self.llm.invoke(messages, **kwargs)
 
             # 检查是否有工具调用
+            # SimpleAgent 从普通文本标记中解析请求，不是原生 tool_calls 字段。
             tool_calls = self._parse_tool_calls(response)
 
             if tool_calls:
@@ -305,6 +306,7 @@ class SimpleAgent(Agent):
 
                 # 添加工具结果
                 tool_results_text = "\n\n".join(tool_results)
+                # 结果作为 user 文本回传；不是结构化 role=tool 消息。
                 messages.append({"role": "user", "content": f"工具执行结果：\n{tool_results_text}\n\n请基于这些结果给出完整的回答。"})
 
                 current_iteration += 1
@@ -315,6 +317,7 @@ class SimpleAgent(Agent):
             break
 
         # 如果超过最大迭代次数，获取最后一次回答
+        # 上限后的额外回答不会再次解析工具标记；标记出现不代表工具已执行。
         if current_iteration >= max_tool_iterations and not final_response:
             final_response = self.llm.invoke(messages, **kwargs)
         

@@ -76,6 +76,7 @@ class MemoryManager:
             记忆ID
         """
         # 自动分类记忆类型
+        # auto_classify=True 时可能覆盖调用方传入的 memory_type。
         if auto_classify:
             memory_type = self._classify_memory_type(content, metadata)
         
@@ -127,6 +128,7 @@ class MemoryManager:
         
         # 从各个记忆类型中检索
         all_results = []
+        # 先为各类型分配候选数量，再合并截断；memory_types 为空会导致除零。
         per_type_limit = max(1, limit // len(memory_types))
 
         for memory_type in memory_types:
@@ -146,6 +148,7 @@ class MemoryManager:
                     continue
 
         # 按重要性和相关性排序
+        # 当前跨类型汇总仅按 importance 排序，相关性由各类型检索实现决定。
         all_results.sort(key=lambda x: x.importance, reverse=True)
         return all_results[:limit]
     

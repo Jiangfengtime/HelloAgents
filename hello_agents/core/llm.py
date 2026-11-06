@@ -296,6 +296,7 @@ class HelloAgentsLLM:
         """
         print(f"🧠 正在调用 {self.model} 模型...")
         try:
+            # think 是生成器：调用者迭代时才会执行请求，逐块读取文本。
             response = self._client.chat.completions.create(
                 model=self.model,
                 messages=messages,
@@ -330,6 +331,7 @@ class HelloAgentsLLM:
                 max_tokens=kwargs.get('max_tokens', self.max_tokens),
                 **{k: v for k, v in kwargs.items() if k not in ['temperature', 'max_tokens']}
             )
+            # invoke 只返回首个候选的文本；调用方拿不到 tool_calls 等完整消息字段。
             return response.choices[0].message.content
         except Exception as e:
             raise HelloAgentsException(f"LLM调用失败: {str(e)}")

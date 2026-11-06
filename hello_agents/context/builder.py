@@ -97,6 +97,7 @@ class ContextBuilder:
             结构化上下文字符串
         """
         # 1. Gather: 收集候选信息
+        # Gather 先收集候选；外部记忆只有实际检索并放入输入后才会影响模型。
         packets = self._gather(
             user_query=user_query,
             conversation_history=conversation_history or [],
@@ -105,9 +106,11 @@ class ContextBuilder:
         )
         
         # 2. Select: 筛选与排序
+        # Select 在预算内选择内容，未选中的候选不会进入最终提示词。
         selected_packets = self._select(packets, user_query)
         
         # 3. Structure: 组织成结构化模板
+        # Structure 只组织被选中的内容；后续 Compress 还可能进一步截断。
         structured_context = self._structure(
             selected_packets=selected_packets,
             user_query=user_query,

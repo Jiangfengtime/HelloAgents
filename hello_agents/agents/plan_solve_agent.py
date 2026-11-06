@@ -69,7 +69,9 @@ class Planner:
 
         try:
             # 提取Python代码块中的列表
+            # 只接受 python 代码围栏中的字面量列表；格式偏离时进入失败分支。
             plan_str = response_text.split("```python")[1].split("```")[0].strip()
+            # literal_eval 解析字面量，不把模型生成文本当作 Python 代码执行。
             plan = ast.literal_eval(plan_str)
             return plan if isinstance(plan, list) else []
         except (ValueError, SyntaxError, IndexError) as e:
@@ -115,7 +117,9 @@ class Executor:
 
             response_text = self.llm_client.invoke(messages, **kwargs) or ""
 
+            # 执行历史只保存在本次局部变量中；下一步通过提示词读到之前的结果。
             history += f"步骤 {i}: {step}\n结果: {response_text}\n\n"
+            # 当前实现直接以最后一步的模型回复作为最终结果，没有额外汇总调用。
             final_answer = response_text
             print(f"✅ 步骤 {i} 已完成，结果: {final_answer}")
 

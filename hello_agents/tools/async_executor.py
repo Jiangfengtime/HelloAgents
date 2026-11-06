@@ -21,6 +21,7 @@ class AsyncToolExecutor:
             return self.registry.execute_tool(tool_name, input_data)
         
         try:
+            # 注册表是同步接口，放到线程池执行可避免直接阻塞事件循环。
             result = await loop.run_in_executor(self.executor, _execute)
             return result
         except Exception as e:
@@ -48,6 +49,7 @@ class AsyncToolExecutor:
                 continue
                 
             print(f"📝 创建任务 {i+1}: {tool_name}")
+            # 此处只创建协程对象，并未通过 create_task 或 gather 同时调度。
             async_task = self.execute_tool_async(tool_name, input_data)
             async_tasks.append((i, task, async_task))
         
@@ -55,6 +57,7 @@ class AsyncToolExecutor:
         results = []
         for i, task, async_task in async_tasks:
             try:
+                # 逐个 await 使当前实现依次执行；函数名中的 parallel 不代表已并发。
                 result = await async_task
                 results.append({
                     "task_id": i,

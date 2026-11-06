@@ -51,6 +51,7 @@ def _convert_to_markdown(path: str) -> str:
     Universal document reader using MarkItDown with enhanced PDF processing.
     Converts any supported file format to markdown text.
     """
+    # 不存在的路径在此转换为空文本，后续需检查解析结果而非假定文档已入库。
     if not os.path.exists(path):
         return ""
     
@@ -62,6 +63,7 @@ def _convert_to_markdown(path: str) -> str:
     # 其他格式使用原有MarkItDown
     md_instance = _get_markitdown_instance()
     if md_instance is None:
+        # 可选解析器不可用时退回基础文本读取，能力与原格式解析不同。
         return _fallback_text_reader(path)
     
     try:

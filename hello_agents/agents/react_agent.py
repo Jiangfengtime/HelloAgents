@@ -127,6 +127,7 @@ class ReActAgent(Agent):
         Returns:
             最终答案
         """
+        # 当前任务的 Action/Observation 轨迹每次重置，与 Agent 对象历史分开。
         self.current_history = []
         current_step = 0
         
@@ -164,6 +165,7 @@ class ReActAgent(Agent):
                 break
             
             # 检查是否完成
+            # Finish 是文本协议的结束信号，只代表模型选择结束，不证明答案正确。
             if action.startswith("Finish"):
                 final_answer = self._parse_action_input(action)
                 print(f"🎉 最终答案: {final_answer}")

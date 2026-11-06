@@ -262,6 +262,7 @@ class FunctionCallAgent(Agent):
 
         messages.append({"role": "user", "content": input_text})
 
+        # 根据注册工具生成接口 schema；描述字段不能代替服务端参数校验。
         tool_schemas = self._build_tool_schemas()
         if not tool_schemas:
             response_text = self.llm.invoke(messages, **kwargs)
@@ -286,6 +287,7 @@ class FunctionCallAgent(Agent):
             choice = response.choices[0]
             assistant_message = choice.message
             content = self._extract_message_content(assistant_message.content)
+            # 原生接口将工具请求放在 tool_calls，而不是从回答文本里用正则寻找。
             tool_calls = list(assistant_message.tool_calls or [])
 
             if tool_calls:
@@ -305,6 +307,7 @@ class FunctionCallAgent(Agent):
                     )
                 messages.append(assistant_payload)
 
+                # 同轮可有多个请求：程序逐个执行，并为每个 ID 回填工具结果。
                 for tool_call in tool_calls:
                     tool_name = tool_call.function.name
                     arguments = self._parse_function_call_arguments(tool_call.function.arguments)
@@ -325,6 +328,7 @@ class FunctionCallAgent(Agent):
             messages.append({"role": "assistant", "content": final_response})
             break
 
+        # 达到工具轮数后再请求一次，并通过 tool_choice=none 禁止继续调用。
         if current_iteration >= iterations_limit and not final_response:
             final_choice = self._invoke_with_tools(
                 messages,

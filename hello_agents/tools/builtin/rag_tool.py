@@ -118,6 +118,7 @@ class RAGTool(Tool):
         if not self.initialized:
             return f"❌ RAG工具未正确初始化，请检查配置: {getattr(self, 'init_error', '未知错误')}"
 
+        # action 是工具分发入口；具体检索、入库或生成由下方对应分支执行。
         action = parameters.get("action")
 
         # 根据action调用对应的方法，传入提取的参数

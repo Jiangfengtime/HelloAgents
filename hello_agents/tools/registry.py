@@ -14,6 +14,7 @@ class ToolRegistry:
     """
 
     def __init__(self):
+        # 类工具和普通函数分别保存；同名查找与执行分支应分开追踪。
         self._tools: dict[str, Tool] = {}
         self._functions: dict[str, dict[str, Any]] = {}
 
@@ -94,6 +95,7 @@ class ToolRegistry:
             工具执行结果
         """
         # 优先查找Tool对象
+        # 类工具接收参数字典；普通函数分支接收原始字符串。
         if name in self._tools:
             tool = self._tools[name]
             try:
