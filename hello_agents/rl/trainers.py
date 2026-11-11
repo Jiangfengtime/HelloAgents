@@ -342,6 +342,7 @@ class GRPOTrainerWrapper(BaseTrainerWrapper):
             model=self.model,
             args=training_args,
             train_dataset=self.dataset,
+            # 奖励函数只计算分数；训练器利用分数进行优化，并由下方 train() 更新权重。
             reward_funcs=self.reward_fn,
             processing_class=self.tokenizer,
             callbacks=[logging_callback],  # 添加回调

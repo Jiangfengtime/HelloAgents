@@ -64,6 +64,7 @@ class AsyncToolExecutor:
                     "tool_name": task["tool_name"],
                     "input_data": task["input_data"],
                     "result": result,
+                    # 此状态仅表示 await 正常返回；result 仍可能是注册表生成的错误文本。
                     "status": "success"
                 })
                 print(f"✅ 任务 {i+1} 完成: {task['tool_name']}")

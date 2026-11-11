@@ -289,6 +289,7 @@ def _build_embedder() -> EmbeddingModel:
 def get_text_embedder() -> EmbeddingModel:
     """获取全局共享的文本嵌入实例（线程安全单例）"""
     global _embedder
+    # 缓存实例在进程内复用；修改环境变量后需 refresh_embedder，且已有索引不会自动重建。
     if _embedder is not None:
         return _embedder
     with _lock:

@@ -101,6 +101,7 @@ class FunctionCallAgent(Agent):
             schemas.append(schema)
 
         # register_function 注册的工具（直接访问内部结构）
+        # 普通函数统一包装成一个 input 字符串参数，不会反射任意函数签名。
         function_map = getattr(self.tool_registry, "_functions", {})
         for name, info in function_map.items():
             schemas.append(
@@ -225,6 +226,7 @@ class FunctionCallAgent(Agent):
 
     def _invoke_with_tools(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]], tool_choice: Union[str, dict], **kwargs):
         """调用底层OpenAI客户端执行函数调用"""
+        # invoke 只返回文本，原生工具流程需保留 tool_calls，因此直接使用底层客户端。
         client = getattr(self.llm, "_client", None)
         if client is None:
             raise RuntimeError("HelloAgentsLLM 未正确初始化客户端，无法执行函数调用。")
@@ -339,6 +341,7 @@ class FunctionCallAgent(Agent):
             final_response = self._extract_message_content(final_choice.choices[0].message.content)
             messages.append({"role": "assistant", "content": final_response})
 
+        # 完整工具轨迹只在本次 messages 中；跨轮 _history 仅保留用户输入和最终回答。
         self.add_message(Message(input_text, "user"))
         self.add_message(Message(final_response, "assistant"))
         return final_response

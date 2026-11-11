@@ -181,6 +181,7 @@ class GAIAEvaluator:
 
             # 调用智能体
             start_time = time.time()
+            # 真实执行入口：评估会使用传入 Agent 的模型和工具，可能产生外部请求。
             response = agent.run(prompt)
             execution_time = time.time() - start_time
 

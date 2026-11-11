@@ -384,6 +384,8 @@ class SimpleAgent(Agent):
         
         messages.append({"role": "user", "content": input_text})
         
+        # 本方法没有复用 run 的工具循环：即使注册了工具，流式路径也只生成文本。
+        # 历史写入位于 yield 循环之后；消费者提前停止迭代时可能尚未保存本轮。
         # 流式调用LLM
         full_response = ""
         for chunk in self.llm.stream_invoke(messages, **kwargs):

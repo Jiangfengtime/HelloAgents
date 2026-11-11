@@ -78,6 +78,7 @@ class RAGTool(Tool):
             self._pipelines[self.rag_namespace] = default_pipeline
 
             # 初始化 LLM 用于回答生成
+            # 构造工具时同时创建问答模型；只想做检索也要留意该初始化的配置要求。
             self.llm = HelloAgentsLLM()
 
             self.initialized = True

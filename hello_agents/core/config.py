@@ -18,6 +18,7 @@ class Config(BaseModel):
     log_level: str = "INFO"
     
     # 其他配置
+    # 声明了上限，但 Agent.add_message 当前没有据此裁剪；需沿使用处确认配置是否生效。
     max_history_length: int = 100
     
     @classmethod

@@ -73,6 +73,7 @@ class Planner:
             plan_str = response_text.split("```python")[1].split("```")[0].strip()
             # literal_eval 解析字面量，不把模型生成文本当作 Python 代码执行。
             plan = ast.literal_eval(plan_str)
+            # 此处只校验容器是 list，没有校验每个元素都是字符串或限制计划长度。
             return plan if isinstance(plan, list) else []
         except (ValueError, SyntaxError, IndexError) as e:
             print(f"❌ 解析计划时出错: {e}")
@@ -183,6 +184,7 @@ class PlanAndSolveAgent(Agent):
         print(f"\n🤖 {self.name} 开始处理问题: {input_text}")
         
         # 1. 生成计划
+        # 规划器和执行器各自构造提示词，当前不会读取基类保存的历史和 system_prompt。
         plan = self.planner.plan(input_text, **kwargs)
         if not plan:
             final_answer = "无法生成有效的行动计划，任务终止。"

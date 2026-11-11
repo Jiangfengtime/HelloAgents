@@ -124,6 +124,8 @@ class MathRewardFunction:
 
         rewards = []
 
+        # zip 按较短列表结束；训练数据需保证回答与标准答案数量、顺序一一对应。
+        # 奖励只给出分数，权重更新由 trainer 完成。
         for completion, truth in zip(completions, ground_truths):
             # 提取预测答案
             pred_answer = self.extract_answer(completion)

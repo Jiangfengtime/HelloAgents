@@ -65,6 +65,7 @@ class HelloAgentsLLM:
         self.kwargs = kwargs
 
         # 自动检测provider或使用指定的provider
+        # provider 自动识别先看服务商环境变量，再看传入密钥/地址；多个配置共存时需显式指定。
         requested_provider = (provider or "").lower() if provider else None
         self.provider = provider or self._auto_detect_provider(api_key, base_url)
 
@@ -341,5 +342,6 @@ class HelloAgentsLLM:
         流式调用LLM的别名方法，与think方法功能相同。
         保持向后兼容性。
         """
+        # 此别名只转发 temperature，其他 kwargs（如 max_tokens）不会进入 think。
         temperature = kwargs.get('temperature')
         yield from self.think(messages, temperature)

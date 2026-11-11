@@ -331,6 +331,7 @@ def load_and_chunk_texts(paths: List[str], chunk_size: int = 800, chunk_overlap:
     """
     print(f"[RAG] Universal loader start: files={len(paths)} chunk_size={chunk_size} overlap={chunk_overlap} ns={namespace or 'default'}")
     chunks: List[Dict] = []
+    # 去重集合只覆盖本次调用；跨次添加需继续核对向量 ID 与存储端 upsert 行为。
     seen_hashes = set()
     
     for path in paths:
@@ -348,6 +349,7 @@ def load_and_chunk_texts(paths: List[str], chunk_size: int = 800, chunk_overlap:
             continue
         
         lang = _detect_lang(markdown_text)
+        # 文档 ID 使用路径+文本长度；同长度改写不改变 doc_id，分块 ID 另含内容 hash。
         doc_id = hashlib.md5(f"{path}|{len(markdown_text)}".encode('utf-8')).hexdigest()
         
         # Always use markdown-aware chunking for better structure preservation
@@ -689,6 +691,7 @@ def search_vectors(
         store = _create_default_vector_store()
     
     # Embed query with unified embedder
+    # 查询和入库必须使用兼容的嵌入模型与维度；换模型后应重建或切换集合。
     qv = embed_query(query)
     
     # Build filter for RAG data
@@ -1199,6 +1202,8 @@ def create_rag_pipeline(
         """Get pipeline statistics"""
         return store.get_collection_stats()
     
+    # 返回值是含闭包函数的字典；这些函数共享上面创建的 store 和 namespace。
+    # 本层 search 返回检索结果，真正生成答案在 RAGTool 的 ask 路径中完成。
     return {
         "store": store,
         "namespace": rag_namespace,

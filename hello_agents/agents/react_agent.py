@@ -147,6 +147,7 @@ class ReActAgent(Agent):
             )
             
             # 调用LLM
+            # 默认请求只有一条拼装的 user 消息；不会读取基类 _history 或 system_prompt。
             messages = [{"role": "user", "content": prompt}]
             response_text = self.llm.invoke(messages, **kwargs)
             
@@ -203,6 +204,7 @@ class ReActAgent(Agent):
     
     def _parse_output(self, text: str) -> Tuple[Optional[str], Optional[str]]:
         """解析LLM输出，提取思考和行动"""
+        # 默认正则按单行匹配，且要求冒号后有空格；自然语言近似格式可能解析失败。
         thought_match = re.search(r"Thought: (.*)", text)
         action_match = re.search(r"Action: (.*)", text)
         

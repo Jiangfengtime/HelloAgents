@@ -128,6 +128,7 @@ class ReflectionAgent(Agent):
         print(f"\n🤖 {self.name} 开始处理任务: {input_text}")
 
         # 重置记忆
+        # 这里的 Memory 是本文件的轨迹列表，与 memory/ 下的长期记忆系统无关。
         self.memory = Memory()
 
         # 1. 初始执行
@@ -166,6 +167,7 @@ class ReflectionAgent(Agent):
             refined_result = self._get_llm_response(refine_prompt, **kwargs)
             self.memory.add_record("execution", refined_result)
 
+        # 最后一轮若执行了 refine，循环直接结束，新版本不会自动再评审一次。
         final_result = self.memory.get_last_execution()
         print(f"\n--- 任务完成 ---\n最终结果:\n{final_result}")
 
@@ -177,5 +179,6 @@ class ReflectionAgent(Agent):
     
     def _get_llm_response(self, prompt: str, **kwargs) -> str:
         """调用LLM并获取完整响应"""
+        # 每个阶段独立发一条 user 消息；信息由模板显式传递，不自动带入 _history。
         messages = [{"role": "user", "content": prompt}]
         return self.llm.invoke(messages, **kwargs) or ""

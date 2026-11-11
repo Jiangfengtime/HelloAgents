@@ -78,6 +78,7 @@ class ToolAwareSimpleAgent(SimpleAgent):
                 return f"❌ 错误：未找到工具 '{tool_name}'"
 
             parsed_parameters = self._parse_tool_parameters(tool_name, parameters)
+            # 规范化引号、tags、task_id 等输入形态，仍需具体工具完成业务参数校验。
             parsed_parameters = self._sanitize_parameters(parsed_parameters)
 
             result = tool.run(parsed_parameters)
@@ -86,6 +87,7 @@ class ToolAwareSimpleAgent(SimpleAgent):
             parsed_parameters = {}
             formatted_result = f"❌ 工具调用失败：{exc}"
 
+        # 回调用于界面展示或观测；异常会记录日志，不改变已经得到的工具结果。
         # 通知监听器
         if self._tool_call_listener:
             try:

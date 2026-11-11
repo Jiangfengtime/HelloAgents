@@ -52,6 +52,7 @@ class WorkingMemory(BaseMemory):
         self.memories.append(memory_item)
         
         # 更新token计数
+        # 这里按空白分词数估算容量，不是真实模型 Token；中文长句可能明显低估。
         self.current_tokens += len(memory_item.content.split())
         
         # 检查容量限制

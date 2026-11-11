@@ -210,6 +210,8 @@ class ContextBuilder:
     ) -> List[ContextPacket]:
         """Select: 基于分数与预算的筛选"""
         # 1) 计算相关性（关键词重叠）
+        # 这是空白切词后的词集合重叠，不是向量相似度；无空格中文可能整句被当成一个词。
+        # enable_mmr/mmr_lambda 在当前筛选实现中未使用，没有实际执行 MMR 去重。
         query_tokens = set(user_query.lower().split())
         for packet in packets:
             content_tokens = set(packet.content.lower().split())
@@ -241,6 +243,7 @@ class ContextBuilder:
         filtered = [p for p in remaining if p.relevance_score >= self.config.min_relevance]
         
         # 6) 按预算填充
+        # 预算此时仅统计 packet 内容；Task、段落标题和 Output 模板开销稍后才加入。
         available_tokens = self.config.get_available_tokens()
         selected: List[ContextPacket] = []
         used_tokens = 0
@@ -335,6 +338,8 @@ class ContextBuilder:
         compressed_lines = []
         used_tokens = 0
         
+        # 按行保留前缀，不调用模型摘要；遇到过长首行可能返回空串。
+        # 逐行 Token 求和未精确计入连接换行，最终预算是近似控制。
         for line in lines:
             line_tokens = count_tokens(line)
             if used_tokens + line_tokens > available_tokens:

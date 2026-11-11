@@ -42,6 +42,7 @@ class ToolRegistry:
         if tool.name in self._tools:
             print(f"⚠️ 警告：工具 '{tool.name}' 已存在，将被覆盖。")
 
+        # 保存的是实例引用，不复制对象；共享注册表意味着共享工具内部状态。
         self._tools[tool.name] = tool
         print(f"✅ 工具 '{tool.name}' 已注册。")
 
@@ -148,5 +149,6 @@ class ToolRegistry:
         self._functions.clear()
         print("🧹 所有工具已清空。")
 
+# 该实例在进程内共享；需要会话隔离时显式创建并传入独立 ToolRegistry。
 # 全局工具注册表
 global_registry = ToolRegistry()

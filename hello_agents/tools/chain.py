@@ -49,6 +49,7 @@ class ToolChain:
         # 初始化上下文
         if context is None:
             context = {}
+        # 复用并修改传入字典，后续步骤通过 output_key 取得前一步结果。
         context["input"] = input_data
         
         final_result = input_data
@@ -69,6 +70,7 @@ class ToolChain:
             # 执行工具
             try:
                 result = registry.execute_tool(tool_name, actual_input)
+                # 注册表常将异常变成错误字符串，此处仍会向下传递，不能据此判断业务成功。
                 context[output_key] = result
                 final_result = result
                 print(f"✅ 步骤 {i+1} 完成")

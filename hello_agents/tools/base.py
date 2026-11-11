@@ -26,6 +26,7 @@ def tool_action(name: str = None, description: str = None):
         description: 工具描述（如果不提供，从 docstring 提取）
     """
     def decorator(func: Callable):
+        # 装饰器仅给方法加元数据，注册时才由反射生成子工具，并不在这里执行方法。
         func._is_tool_action = True
         func._tool_name = name
         func._tool_description = description
@@ -104,6 +105,7 @@ class Tool(ABC):
 
     def validate_parameters(self, parameters: Dict[str, Any]) -> bool:
         """验证参数"""
+        # 这里只检查必填键是否存在，不验证类型、取值范围，也不会自动在所有 run 前执行。
         required_params = [p.name for p in self.get_parameters() if p.required]
         return all(param in parameters for param in required_params)
 

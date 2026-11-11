@@ -39,6 +39,7 @@ class MemoryManager:
         # 存储和检索功能已移至各记忆类型内部实现
         
         # 初始化各类型记忆
+        # 启用某类型即调用其构造函数；长期记忆后端可能在初始化阶段连接外部数据库。
         self.memory_types = {}
         
         if enable_working:
@@ -123,6 +124,7 @@ class MemoryManager:
         Returns:
             检索到的记忆列表
         """
+        # time_range 虽在签名中声明，当前实现没有将它应用到过滤或传给后端。
         if memory_types is None:
             memory_types = list(self.memory_types.keys())
         

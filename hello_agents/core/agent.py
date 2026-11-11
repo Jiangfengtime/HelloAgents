@@ -19,6 +19,7 @@ class Agent(ABC):
         self.name = name
         self.llm = llm
         self.system_prompt = system_prompt
+        # Config 只是保存在对象上；不会自动把温度等配置同步给已传入的 llm。
         self.config = config or Config()
         # 对象级对话历史：只存在于当前 Agent 实例内，不等于外部长期记忆。
         self._history: list[Message] = []
