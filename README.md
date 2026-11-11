@@ -16,6 +16,8 @@ HelloAgents是一个专为学习和教学设计的多智能体框架，基于Ope
 - [HelloAgents 深入学习](docs/learning/HelloAgents深入学习.md)：完整调用链、参数与状态、实现边界、调试练习和离线验证。
 - [离线调用链示例](examples/learning_trace.py)：在根目录运行 `python -m examples.learning_trace`，查看完整请求和历史变化。
 
+- [核心功能测试手册](tests/README.md)：96 个新增离线场景，按模块验证正常流程、异常与边界条件。
+
 ## 🚀 快速开始
 
 ### 系统要求
