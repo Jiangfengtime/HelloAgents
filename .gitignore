@@ -159,3 +159,6 @@ cython_debug/
 #.idea/
 .DS_Store
 .obsidian
+
+# 真实模型测试本地请求/响应记录（不提交）
+.local-test-results/
