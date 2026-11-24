@@ -1,3 +1,6 @@
+# 图存储把实体建成节点、把关系建成边；Cypher 查询的结果再转换为 Python 字典。
+# 本类不生成自然语言答案；遍历深度、关系类型和清空范围由调用参数及查询语句决定。
+
 """
 Neo4j图数据库存储实现
 """
@@ -65,6 +68,7 @@ class Neo4jGraphStore:
     
     def _initialize_driver(self, **config):
         """初始化Neo4j驱动"""
+        # 学习提示：构造驱动并验证连接；实例化失败通常属于服务、认证或连接配置问题。
         try:
             self.driver = GraphDatabase.driver(
                 self.uri,
@@ -99,6 +103,7 @@ class Neo4jGraphStore:
     
     def _create_indexes(self):
         """创建必要的索引以提高查询性能"""
+        # 学习提示：为实体与记忆字段创建索引；它们是查询辅助结构，不会自动提取知识。
         indexes = [
             # 实体索引
             "CREATE INDEX entity_id_index IF NOT EXISTS FOR (e:Entity) ON (e.id)",
@@ -133,6 +138,7 @@ class Neo4jGraphStore:
         Returns:
             bool: 是否成功
         """
+        # 学习提示：MERGE 按实体 id 查找或创建节点；同 ID 会复用节点，而非每次追加独立节点。
         try:
             props = properties or {}
             props.update({
@@ -181,6 +187,7 @@ class Neo4jGraphStore:
         Returns:
             bool: 是否成功
         """
+        # 学习提示：先定位两端实体，再创建/合并指定类型关系；关系类型被用于查询结构，需由可信代码约束。
         try:
             props = properties or {}
             props.update({
@@ -234,6 +241,7 @@ class Neo4jGraphStore:
         Returns:
             List[Dict]: 相关实体列表
         """
+        # 学习提示：沿图边最多遍历 max_depth 跳；返回路径距离/关系类型，不等于调用大模型进行推理。
         try:
             # 构建关系类型过滤
             rel_filter = ""
@@ -280,6 +288,7 @@ class Neo4jGraphStore:
         Returns:
             List[Dict]: 匹配的实体列表
         """
+        # 学习提示：按名字模式及可选实体类型筛选，不是文本嵌入相似度查询。
         try:
             # 构建类型过滤
             type_filter = ""
@@ -360,6 +369,7 @@ class Neo4jGraphStore:
         Returns:
             bool: 是否成功
         """
+        # 学习提示：DETACH DELETE 会连同该节点的边一起删除，可能影响其他记忆使用的共享关系。
         try:
             query = """
             MATCH (e:Entity {id: $entity_id})
@@ -385,6 +395,7 @@ class Neo4jGraphStore:
         Returns:
             bool: 是否成功
         """
+        # 学习提示：MATCH (n) 覆盖当前所选数据库全部节点，没有限定用户或 Memory 标签。
         try:
             query = "MATCH (n) DETACH DELETE n"
             
@@ -437,6 +448,7 @@ class Neo4jGraphStore:
         Returns:
             bool: 服务是否健康
         """
+        # 学习提示：RETURN 1 只检验最小查询是否成功，不能证明业务数据、索引或图结构正确。
         try:
             with self.driver.session(database=self.database) as session:
                 result = session.run("RETURN 1 as health")

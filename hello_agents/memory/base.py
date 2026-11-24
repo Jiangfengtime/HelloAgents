@@ -1,3 +1,6 @@
+# 阅读顺序：MemoryItem 描述一条记录，MemoryConfig 描述策略，BaseMemory 约定增删改查接口。
+# 这里定义的数据不会自动进入大模型上下文；还需管理器检索及应用/工具层回填。
+
 """记忆系统基础类和配置
 
 按照第8章架构设计的基础组件：
@@ -70,6 +73,7 @@ class BaseMemory(ABC):
         Returns:
             记忆ID
         """
+        # 学习提示：子类承担实际写入并返回 ID；此接口不承诺写入向量库和文档库具有原子性。
         pass
 
     @abstractmethod
@@ -84,6 +88,7 @@ class BaseMemory(ABC):
         Returns:
             相关记忆列表
         """
+        # 学习提示：返回 MemoryItem 列表；kwargs 用于传递用户、时间或类型特定过滤，是否支持由子类决定。
         pass
 
     @abstractmethod
@@ -100,6 +105,7 @@ class BaseMemory(ABC):
         Returns:
             是否更新成功
         """
+        # 学习提示：None 表示保留旧值；返回值通常只表达是否更新成功，不包含更新后的完整记录。
         pass
 
     @abstractmethod
@@ -129,6 +135,7 @@ class BaseMemory(ABC):
     @abstractmethod
     def clear(self):
         """清空所有记忆"""
+        # 学习提示：这是后端级清理契约，未约定用户范围；对外暴露前必须检查具体子类的删除范围。
         pass
 
     @abstractmethod
@@ -155,6 +162,7 @@ class BaseMemory(ABC):
         Returns:
             计算后的重要性分数
         """
+        # 学习提示：使用长度和关键词做规则加分；不会调用 LLM 判断内容价值。
         importance = base_importance
 
         # 基于内容长度

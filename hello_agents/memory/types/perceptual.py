@@ -1,3 +1,6 @@
+# 感知记忆按 modality 选择编码器，SQLite 保存描述/属性，Qdrant 按模态区分集合。
+# 模型加载失败时存在降级编码；能生成定长向量不代表保留了图片、音频的真实语义。
+
 """感知记忆实现（长存的多模态）
 
 按照第8章架构设计的感知记忆（长期、多模态），提供：
@@ -212,6 +215,7 @@ class PerceptualMemory(BaseMemory):
     
     def retrieve(self, query: str, limit: int = 5, **kwargs) -> List[MemoryItem]:
         """检索感知记忆（可筛模态；同模态向量检索+时间/重要性融合）"""
+        # 学习提示：按模态编码查询、向量召回，再从 SQLite 读取正文；无结果时还存在缓存关键词回退。
         user_id = kwargs.get("user_id")
         target_modality = kwargs.get("target_modality")  # 可选：限制目标模态
         query_modality = kwargs.get("query_modality", target_modality or "text")
@@ -437,6 +441,7 @@ class PerceptualMemory(BaseMemory):
 
     def get_all(self) -> List[MemoryItem]:
         """获取所有感知记忆"""
+        # 学习提示：返回内存缓存，不在此处执行 SQLite 全量恢复或 Qdrant 全量扫描。
         return self.perceptual_memories.copy()
     
     def get_stats(self) -> Dict[str, Any]:
@@ -585,6 +590,7 @@ class PerceptualMemory(BaseMemory):
 
     def _image_encoder(self, image_data: Any) -> List[float]:
         """图像编码器（优先CLIP，不可用则哈希）"""
+        # 学习提示：优先用可用图像模型产生表示；降级向量不能当作已验证的图像语义理解。
         if self._clip_model is None or self._clip_processor is None:
             return self._image_encoder_hash(image_data)
         try:
@@ -622,6 +628,7 @@ class PerceptualMemory(BaseMemory):
 
     def _audio_encoder(self, audio_data: Any) -> List[float]:
         """音频编码器（优先CLAP，不可用则哈希）"""
+        # 学习提示：编码依赖音频模型与读取能力；返回向量不代表完成了语音转文字。
         if self._clap_model is None or self._clap_processor is None:
             return self._audio_encoder_hash(audio_data)
         try:
@@ -653,6 +660,7 @@ class PerceptualMemory(BaseMemory):
 
     def _default_encoder(self, data: Any) -> List[float]:
         """默认编码器（退化为文本嵌入或哈希）"""
+        # 学习提示：用于缺少专用编码器的兜底表示，不等于为任意模态提供了理解模型。
         try:
             return self._text_encoder(str(data))
         except Exception:

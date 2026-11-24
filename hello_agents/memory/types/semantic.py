@@ -1,3 +1,6 @@
+# 知识记忆结合文本向量与实体关系：Qdrant 查相关正文，Neo4j 查关联实体，再混合排序。
+# NLP 抽取、图写入、向量写入是多个独立步骤，不等于大模型训练或跨数据库原子事务。
+
 """语义记忆实现
 
 结合向量检索和知识图谱的混合语义记忆，使用：
@@ -595,6 +598,7 @@ class SemanticMemory(BaseMemory):
     
     def _extract_entities(self, text: str) -> List[Entity]:
         """智能多语言实体提取"""
+        # 学习提示：按可用 NLP/规则提取实体，再形成 Entity；结果受语言模型资源和匹配规则影响。
         entities = []
         
         # 检测文本语言
@@ -734,6 +738,7 @@ class SemanticMemory(BaseMemory):
     
     def _extract_relations(self, text: str, entities: List[Entity]) -> List[Relation]:
         """提取关系"""
+        # 学习提示：关系由正文和已识别实体共同决定；抽取出来的边仍需业务验证。
         relations = []
         # 仅保留简单共现关系，不做任何正则/关键词匹配
         for i, entity1 in enumerate(entities):
@@ -1049,6 +1054,7 @@ class SemanticMemory(BaseMemory):
 
     def get_all(self) -> List[MemoryItem]:
         """获取所有语义记忆"""
+        # 学习提示：返回本实例持有的语义记忆缓存，不保证是数据库中所有用户记录的完整快照。
         return self.semantic_memories.copy()
     
     def get_stats(self) -> Dict[str, Any]:

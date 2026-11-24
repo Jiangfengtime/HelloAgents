@@ -1,3 +1,6 @@
+# 阅读主线：load_and_chunk_texts → index_chunks → search_vectors/search_vectors_expanded → rank/merge。
+# 基础搜索返回证据片段；MQE、HyDE、tldr_summarize 会额外请求模型，最终问答由 RAGTool 等上层组织。
+
 from typing import List, Dict, Optional, Any
 import os
 import hashlib
@@ -12,6 +15,7 @@ def _get_markitdown_instance():
     """
     Get a configured MarkItDown instance for document conversion.
     """
+    # 学习提示：按需导入解析器，缺依赖时返回 None；调用方再决定是否回退纯文本读取。
     try:
         from markitdown import MarkItDown
         return MarkItDown()
@@ -26,6 +30,7 @@ def _is_markitdown_supported_format(path: str) -> bool:
     Supports: PDF, Office docs (docx, xlsx, pptx), images (jpg, png, gif, bmp, tiff), 
     audio (mp3, wav, m4a), HTML, text formats (txt, md, csv, json, xml), ZIP files, etc.
     """
+    # 学习提示：只按扩展名判断候选格式，不能保证具体文件内容、OCR 或转录依赖一定可用。
     ext = (os.path.splitext(path)[1] or '').lower()
     supported_formats = {
         # Documents
@@ -80,6 +85,7 @@ def _enhanced_pdf_processing(path: str) -> str:
     """
     Enhanced PDF processing with post-processing cleanup.
     """
+    # 学习提示：先转换 PDF 再做文本清理；提取质量仍取决于解析器，扫描件不等于已完成 OCR。
     print(f"[RAG] Using enhanced PDF processing for: {path}")
     
     # 使用原有MarkItDown提取
@@ -106,6 +112,7 @@ def _post_process_pdf_text(text: str) -> str:
     """
     Post-process PDF text to improve quality.
     """
+    # 学习提示：规则删除短行、页码并合并文本；启发式可能误删真实短标题，应检查解析结果。
     import re
     
     # 1. 按行分割并清理
@@ -187,6 +194,7 @@ def _fallback_text_reader(path: str) -> str:
     """
     Simple fallback reader for basic text files when MarkItDown is unavailable.
     """
+    # 学习提示：基础文本读取不等于解析二进制 Office/PDF 的正文；返回非空也应检查内容质量。
     try:
         with open(path, 'r', encoding='utf-8', errors='ignore') as f:
             return f.read()
@@ -221,12 +229,14 @@ def _is_cjk(ch: str) -> bool:
 
 def _approx_token_len(text: str) -> int:
     # 近似估计：CJK字符按1 token，其他按空白分词
+    # 学习提示：这是近似长度估计，不是目标模型 tokenizer；分块预算只能按近似值理解。
     cjk = sum(1 for ch in text if _is_cjk(ch))
     non_cjk_tokens = len([t for t in text.split() if t])
     return cjk + non_cjk_tokens
 
 
 def _split_paragraphs_with_headings(text: str) -> List[Dict]:
+    # 学习提示：保留段落、标题路径和字符位置，后续引用与邻接扩展依赖这些来源字段。
     lines = text.splitlines()
     heading_stack: List[str] = []
     paragraphs: List[Dict] = []
@@ -272,6 +282,7 @@ def _split_paragraphs_with_headings(text: str) -> List[Dict]:
 
 
 def _chunk_paragraphs(paragraphs: List[Dict], chunk_tokens: int, overlap_tokens: int) -> List[Dict]:
+    # 学习提示：以段落为单位累计到目标预算，并保留尾部重叠；单个大段落可能使预算成为软目标。
     chunks: List[Dict] = []
     cur: List[Dict] = []
     cur_tokens = 0
@@ -329,6 +340,7 @@ def load_and_chunk_texts(paths: List[str], chunk_size: int = 800, chunk_overlap:
     Universal document loader and chunker using MarkItDown.
     Converts all supported formats to markdown, then chunks intelligently.
     """
+    # 学习提示：输出字典列表而非 DocumentChunk：每条含 id/content/metadata，交给 index_chunks 入库。
     print(f"[RAG] Universal loader start: files={len(paths)} chunk_size={chunk_size} overlap={chunk_overlap} ns={namespace or 'default'}")
     chunks: List[Dict] = []
     # 去重集合只覆盖本次调用；跨次添加需继续核对向量 ID 与存储端 upsert 行为。
@@ -394,6 +406,7 @@ def load_and_chunk_texts(paths: List[str], chunk_size: int = 800, chunk_overlap:
 
 
 def build_graph_from_chunks(neo4j, chunks: List[Dict]) -> None:
+    # 学习提示：创建 Document 与分块节点及 HAS_CHUNK 关系；异常逐项忽略，不保证整张图完整写入。
     created_docs = set()
     for ch in chunks:
         mem_id = ch["id"]
@@ -432,6 +445,7 @@ def _preprocess_markdown_for_embedding(text: str) -> str:
     Preprocess markdown text for better embedding quality.
     Removes excessive markup while preserving semantic content.
     """
+    # 学习提示：只清理用于编码的文本；原始 Markdown 仍可保存在 payload 中，便于展示与引用。
     import re
     
     # Remove markdown headers symbols but keep the text
@@ -460,6 +474,7 @@ def _create_default_vector_store(dimension: int = None) -> QdrantVectorStore:
     Create default Qdrant vector store with RAG-optimized settings.
     使用连接管理器避免重复连接。
     """
+    # 学习提示：从环境构造实际 Qdrant 存储连接；省略 store 参数不代表离线或进程内模式。
     if dimension is None:
         dimension = get_dimension(384)
     
@@ -492,6 +507,7 @@ def index_chunks(
     Index markdown chunks with unified embedding and Qdrant storage.
     Uses百炼 API with fallback to sentence-transformers.
     """
+    # 学习提示：将分块批量编码，封装 RAG 标签和正文后写向量库；返回 None，写入失败依赖异常表达。
     if not chunks:
         print("[RAG] No chunks to index")
         return
@@ -640,6 +656,7 @@ def embed_query(query: str) -> List[float]:
     """
     Embed query using unified embedding (百炼 with fallback).
     """
+    # 学习提示：查询必须与索引使用同一向量空间；失败回退零向量只是保持形状，不代表检索仍可靠。
     embedder = get_text_embedder()
     dimension = get_dimension(384)
     try:
@@ -683,6 +700,7 @@ def search_vectors(
     """
     Search RAG vectors using unified embedding and Qdrant.
     """
+    # 学习提示：过滤 memory_type 与 RAG 标记，按 namespace 限定候选；这里只召回，不生成答案。
     if not query:
         return []
     
@@ -715,6 +733,7 @@ def search_vectors(
 
 
 def _prompt_mqe(query: str, n: int) -> List[str]:
+    # 学习提示：这里会真实调用 HelloAgentsLLM 生成不同查询表述；失败回退原问题。
     try:
         from ...core.llm import HelloAgentsLLM
         llm = HelloAgentsLLM()
@@ -731,6 +750,7 @@ def _prompt_mqe(query: str, n: int) -> List[str]:
 
 
 def _prompt_hyde(query: str) -> Optional[str]:
+    # 学习提示：模型生成假想答案作为检索查询文档；该文本不是检索证据，不能直接当成事实回答。
     try:
         from ...core.llm import HelloAgentsLLM
         llm = HelloAgentsLLM()
@@ -758,6 +778,7 @@ def search_vectors_expanded(
     """
     Search with query expansion using unified embedding and Qdrant.
     """
+    # 学习提示：多个查询依次召回，按业务 ID 去重并保留最高分；没有实现并行请求或统一重排序。
     if not query:
         return []
     
@@ -811,6 +832,7 @@ def search_vectors_expanded(
 
 
 def _try_load_cross_encoder(model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"):
+    # 学习提示：尝试加载额外重排模型，可能下载权重；失败返回 None 让上层保留原排序。
     try:
         from sentence_transformers import CrossEncoder
         return CrossEncoder(model_name)
@@ -819,6 +841,7 @@ def _try_load_cross_encoder(model_name: str = "cross-encoder/ms-marco-MiniLM-L-6
 
 
 def rerank_with_cross_encoder(query: str, items: List[Dict], model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2", top_k: int = 10) -> List[Dict]:
+    # 学习提示：模型同时读取问题和片段重新打分；会给字典写 rerank_score 并原地排序输入列表。
     ce = _try_load_cross_encoder(model_name)
     if ce is None or not items:
         return items[:top_k]
@@ -837,6 +860,7 @@ def compute_graph_signals_from_pool(vector_hits: List[Dict], same_doc_weight: fl
     """
     Compute graph signals with direct parameters instead of environment variables.
     """
+    # 学习提示：信号来自当前候选池的同文档密度和字符位置邻近，不读取 Neo4j 图数据库。
 
     # group by doc
     by_doc: Dict[str, List[Dict]] = {}
@@ -900,6 +924,7 @@ def rank(vector_hits: List[Dict], graph_signals: Optional[Dict[str, float]] = No
     """
     Rank results with direct weight parameters instead of environment variables.
     """
+    # 学习提示：向量分与结构信号按权重线性组合；分数是排序依据，不是概率或事实可信度。
     items: List[Dict] = []
     graph_signals = graph_signals or {}
     for h in vector_hits:
@@ -920,6 +945,7 @@ def rank(vector_hits: List[Dict], graph_signals: Optional[Dict[str, float]] = No
 
 
 def merge_snippets(ranked_items: List[Dict], max_chars: int = 1200) -> str:
+    # 学习提示：拼接前若超字符预算就截取尾块；连接用的空行未计入 max_chars。
     out: List[str] = []
     total = 0
     for it in ranked_items:
@@ -939,6 +965,7 @@ def merge_snippets(ranked_items: List[Dict], max_chars: int = 1200) -> str:
 
 
 def expand_neighbors_from_pool(selected: List[Dict], pool: List[Dict], neighbors: int = 1, max_additions: int = 5) -> List[Dict]:
+    # 学习提示：邻居只在已有 pool 中寻找，不会额外向数据库读取尚未召回的相邻块。
     if not selected or not pool or neighbors <= 0:
         return selected
     # index pool by doc_id and sort by start
@@ -986,6 +1013,7 @@ def expand_neighbors_from_pool(selected: List[Dict], pool: List[Dict], neighbors
 
 def merge_snippets_grouped(ranked_items: List[Dict], max_chars: int = 1200, include_citations: bool = True) -> str:
     # Group by doc_id and aggregate doc score
+    # 学习提示：按文档分组并按位置恢复顺序，添加引用编号；编号仅标明来源，不验证内容真实性。
     by_doc: Dict[str, List[Dict]] = {}
     doc_score: Dict[str, float] = {}
     for it in ranked_items:
@@ -1066,6 +1094,7 @@ def compress_ranked_items(ranked_items: List[Dict], enable_compression: bool = T
     """
     Compress ranked items with direct parameters instead of environment variables.
     """
+    # 学习提示：合并相近片段并限制每文档条数；这是规则压缩，且可能原地修改已有字典。
     if not enable_compression:
         return ranked_items
     by_doc_count: Dict[str, int] = {}
@@ -1113,6 +1142,7 @@ def compress_ranked_items(ranked_items: List[Dict], enable_compression: bool = T
 
 
 def tldr_summarize(text: str, bullets: int = 3) -> Optional[str]:
+    # 学习提示：这里才是调用 LLM 做文本摘要；异常返回 None，应用应自行决定保留原文还是展示错误。
     try:
         if not text or len(text.strip()) == 0:
             return None
@@ -1144,6 +1174,7 @@ def create_rag_pipeline(
     Returns:
         Dict containing store, namespace, and helper functions
     """
+    # 学习提示：返回保存闭包函数的字典，共享 store/namespace；调用者通过 pipeline["search"](...) 使用。
     dimension = get_dimension(384)
     
     store = QdrantVectorStore(

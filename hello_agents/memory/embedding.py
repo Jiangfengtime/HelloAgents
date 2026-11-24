@@ -1,3 +1,6 @@
+# 嵌入是把文本变为检索向量，不是生成回答；单字符串通常返回一维向量，字符串列表返回向量列表。
+# 全局提供器缓存模型实例；更换模型、词表或维度后，已有索引不会自动迁移。
+
 """统一嵌入模块（实现 + 提供器）
 
 说明（中文）：
@@ -47,6 +50,7 @@ class LocalTransformerEmbedding(EmbeddingModel):
 
     def _load_backend(self):
         # 优先 sentence-transformers
+        # 学习提示：先尝试 sentence-transformers，再尝试 transformers+torch；加载权重可能访问网络。
         try:
             from sentence_transformers import SentenceTransformer
             self._st_model = SentenceTransformer(self.model_name)
@@ -77,6 +81,7 @@ class LocalTransformerEmbedding(EmbeddingModel):
         raise ImportError("未找到可用的本地嵌入后端，请安装 sentence-transformers 或 transformers+torch")
 
     def encode(self, texts: Union[str, List[str]]):
+        # 学习提示：先把单条/批量输入统一成列表，后按 single 恢复返回形状；不是批量输入永远返回一个向量。
         if isinstance(texts, str):
             inputs = [texts]
             single = True
@@ -123,11 +128,13 @@ class TFIDFEmbedding(EmbeddingModel):
             raise ImportError("请安装 scikit-learn: pip install scikit-learn")
 
     def fit(self, texts: List[str]):
+        # 学习提示：fit 决定词表与真实维度；重新拟合会改变特征空间，旧索引不能直接继续混用。
         self._vectorizer.fit(texts)
         self._is_fitted = True
         self._dimension = len(self._vectorizer.get_feature_names_out())
 
     def encode(self, texts: Union[str, List[str]]):
+        # 学习提示：必须先 fit；transform 仅按已有词表编码新文本，不会在查询阶段自动扩展词表。
         if not self._is_fitted:
             raise ValueError("TF-IDF模型未训练，请先调用fit()方法")
         if isinstance(texts, str):
@@ -155,6 +162,7 @@ class DashScopeEmbedding(EmbeddingModel):
     """
 
     def __init__(self, model_name: str = "text-embedding-v3", api_key: Optional[str] = None, base_url: Optional[str] = None):
+        # 学习提示：构造期间会 encode health_check 探测维度，因此实例化就可能产生真实外部请求。
         self.model_name = model_name
         self.api_key = api_key
         self.base_url = base_url
@@ -176,6 +184,7 @@ class DashScopeEmbedding(EmbeddingModel):
             raise ImportError("请安装 dashscope: pip install dashscope")
 
     def encode(self, texts: Union[str, List[str]]):
+        # 学习提示：base_url 存在时走 REST /embeddings，否则走 SDK；两条分支最终都提取数值向量。
         if isinstance(texts, str):
             inputs = [texts]
             single = True
@@ -245,6 +254,7 @@ def create_embedding_model(model_type: str = "local", **kwargs) -> EmbeddingMode
 
 def create_embedding_model_with_fallback(preferred_type: str = "dashscope", **kwargs) -> EmbeddingModel:
     """带回退的创建：dashscope -> local -> tfidf"""
+    # 学习提示：相同 kwargs 传给不同构造器；后备模型不接受 model_name/api_key 等参数时也可能继续失败。
     if preferred_type in ("sentence_transformer", "huggingface"):
         preferred_type = "local"
     # 这里只捕获创建阶段异常；若后端到 encode 时才失败，不会自动重新选择下一个后端。
@@ -301,6 +311,7 @@ def get_text_embedder() -> EmbeddingModel:
 
 def get_dimension(default: int = 384) -> int:
     """获取统一向量维度（失败回退默认值）"""
+    # 学习提示：异常时返回默认维度只是兼容降级，不证明当前集合或实际向量就是该维度。
     try:
         return int(getattr(get_text_embedder(), "dimension", default))
     except Exception:
@@ -309,6 +320,7 @@ def get_dimension(default: int = 384) -> int:
 
 def refresh_embedder() -> EmbeddingModel:
     """强制重建嵌入实例（可用于动态切换环境变量）"""
+    # 学习提示：只替换全局变量；已有对象保存的旧模型引用和已经写入的向量都不会自动更新。
     global _embedder
     with _lock:
         _embedder = _build_embedder()

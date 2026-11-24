@@ -1,3 +1,6 @@
+# 统一入口流程：新增时封装 MemoryItem 并按类型分派；查询时向各类型取候选，再合并排序。
+# 管理器不是统一数据库事务层；用户权限、过滤是否落地与跨后端一致性仍需检查具体实现。
+
 """记忆管理器 - 记忆核心层的统一管理接口"""
 
 from typing import List, Dict, Any, Optional, Union
@@ -33,6 +36,7 @@ class MemoryManager:
         enable_semantic: bool = True,
         enable_perceptual: bool = False
     ):
+        # 学习提示：enable_* 决定实际构造哪些类型；只学习本地路径时可关闭 episodic/semantic/perceptual。
         self.config = config or MemoryConfig()
         # 一个管理器绑定一个用户；新增记录与检索条件都使用这个标识。
         self.user_id = user_id
@@ -77,6 +81,7 @@ class MemoryManager:
         Returns:
             记忆ID
         """
+        # 学习提示：auto_classify=True 可覆盖传入类型；要严格写入指定类型时显式关闭自动分类。
         # 自动分类记忆类型
         # auto_classify=True 时可能覆盖调用方传入的 memory_type。
         if auto_classify:
@@ -126,6 +131,7 @@ class MemoryManager:
         Returns:
             检索到的记忆列表
         """
+        # 学习提示：limit 是最终上限而非保证数量；每类先取固定配额，没有命中的配额不会自动补给其他类型。
         # time_range 虽在签名中声明，当前实现没有将它应用到过滤或传给后端。
         if memory_types is None:
             memory_types = list(self.memory_types.keys())
@@ -195,6 +201,7 @@ class MemoryManager:
         Returns:
             是否删除成功
         """
+        # 学习提示：通过 ID 在已启用类型中查找，首次命中就返回；这里未增加 user_id 所有权校验。
         for memory_type, memory_instance in self.memory_types.items():
             if memory_instance.has_memory(memory_id):
                 return memory_instance.remove(memory_id)
@@ -277,6 +284,7 @@ class MemoryManager:
 
     def get_memory_stats(self) -> Dict[str, Any]:
         """获取记忆统计信息"""
+        # 学习提示：统计由各类型自行提供；内存缓存数量和数据库总数可能采用不同口径。
         stats = {
             "user_id": self.user_id,
             "enabled_types": list(self.memory_types.keys()),
@@ -299,6 +307,7 @@ class MemoryManager:
 
     def clear_all_memories(self):
         """清空所有记忆"""
+        # 学习提示：逐类型调用 clear，不是一个统一事务，也不会只因 manager 绑定了用户就自动缩小删除范围。
         for memory_type, memory_instance in self.memory_types.items():
             memory_instance.clear()
         logger.info("所有记忆已清空")

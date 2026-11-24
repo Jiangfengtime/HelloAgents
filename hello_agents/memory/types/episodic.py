@@ -1,3 +1,6 @@
+# 事件记忆的数据路径：SQLite 保存正文/事件属性，Qdrant 提供相似度召回，内存保存会话缓存。
+# 检索按向量 ID 回读正文；缓存、文档库和向量索引的生命周期与失败状态彼此独立。
+
 """情景记忆实现
 
 按照第8章架构设计的情景记忆，提供：
@@ -293,6 +296,7 @@ class EpisodicMemory(BaseMemory):
         metadata: Dict[str, Any] = None
     ) -> bool:
         """更新情景记忆（SQLite为权威，Qdrant按需重嵌入）"""
+        # 学习提示：更新涉及缓存、SQLite 和向量索引；这些步骤独立执行，需关注失败后的部分更新。
         updated = False
         for episode in self.episodes:
             if episode.episode_id == memory_id:
@@ -430,6 +434,7 @@ class EpisodicMemory(BaseMemory):
 
     def get_all(self) -> List[MemoryItem]:
         """获取所有情景记忆（转换为MemoryItem格式）"""
+        # 学习提示：当前从内存 episodes 构造 MemoryItem，不是遍历 SQLite 的全部持久化记录。
         memory_items = []
         for episode in self.episodes:
             memory_item = MemoryItem(
@@ -476,6 +481,7 @@ class EpisodicMemory(BaseMemory):
     
     def find_patterns(self, user_id: str = None, min_frequency: int = 2) -> List[Dict[str, Any]]:
         """发现用户行为模式"""
+        # 学习提示：按缓存中的事件与频次发现模式，不调用大模型自动总结所有历史。
         # 检查缓存
         cache_key = f"{user_id}_{min_frequency}"
         if (cache_key in self.patterns_cache and 
@@ -534,6 +540,7 @@ class EpisodicMemory(BaseMemory):
     
     def get_timeline(self, user_id: str = None, limit: int = 50) -> List[Dict[str, Any]]:
         """获取时间线视图"""
+        # 学习提示：按用户与时间组织本实例缓存中的事件；重启后的覆盖范围取决于缓存是否恢复。
         episodes = [e for e in self.episodes if user_id is None or e.user_id == user_id]
         episodes.sort(key=lambda x: x.timestamp, reverse=True)
         

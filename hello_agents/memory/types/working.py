@@ -1,3 +1,6 @@
+# 会话级工作区：仅在当前进程保存记录，以时间、容量和优先级清理。
+# 列表用于实际遍历与返回；堆辅助优先级管理，检索在当前候选文本上临时计算相关性。
+
 """工作记忆实现
 
 按照第8章架构设计的工作记忆，提供：
@@ -162,6 +165,7 @@ class WorkingMemory(BaseMemory):
         metadata: Dict[str, Any] = None
     ) -> bool:
         """更新工作记忆"""
+        # 学习提示：更新正文时同步本对象的容量计数和堆；此处未调用外部数据库。
         for memory in self.memories:
             if memory.id == memory_id:
                 old_tokens = len(memory.content.split())
@@ -186,6 +190,7 @@ class WorkingMemory(BaseMemory):
     
     def remove(self, memory_id: str) -> bool:
         """删除工作记忆"""
+        # 学习提示：从列表删除并调整计数；堆删除标记辅助方法当前为空，实际淘汰仍依赖列表遍历。
         for i, memory in enumerate(self.memories):
             if memory.id == memory_id:
                 # 从列表中删除
@@ -207,6 +212,7 @@ class WorkingMemory(BaseMemory):
     
     def clear(self):
         """清空所有工作记忆"""
+        # 学习提示：清空当前实例的列表、堆和计数；不影响 Agent._history，也不清空长期数据库。
         self.memories.clear()
         self.memory_heap.clear()
         self.current_tokens = 0
@@ -236,6 +242,7 @@ class WorkingMemory(BaseMemory):
     
     def get_recent(self, limit: int = 10) -> List[MemoryItem]:
         """获取最近的记忆"""
+        # 学习提示：按时间排序当前缓存，不能返回已因 TTL 或容量被淘汰的记录。
         sorted_memories = sorted(
             self.memories, 
             key=lambda x: x.timestamp, 
@@ -258,6 +265,7 @@ class WorkingMemory(BaseMemory):
     
     def get_context_summary(self, max_length: int = 500) -> str:
         """获取上下文摘要"""
+        # 学习提示：这是字符串拼接的上下文摘要，不调用模型；max_length 为字符长度限制。
         if not self.memories:
             return "No working memories available."
         
@@ -363,6 +371,7 @@ class WorkingMemory(BaseMemory):
 
     def _expire_old_memories(self):
         """按TTL清理过期记忆，并同步更新堆与token计数"""
+        # 学习提示：保留未过期项后重建堆并减去容量计数；清理只在显式调用该方法的入口触发。
         if not self.memories:
             return
         cutoff_time = datetime.now() - timedelta(minutes=self.max_age_minutes)

@@ -1,3 +1,6 @@
+# 本层只接收已经算好的 vectors 以及 metadata/ids，封装集合、过滤、相似度查询和删除。
+# memory_id 是业务记录标识，point ID 是 Qdrant 主键；调用方应核对两者映射及删除范围。
+
 """
 Qdrant向量数据库存储实现
 使用专业的Qdrant向量数据库替代ChromaDB
@@ -43,6 +46,7 @@ class QdrantConnectionManager:
         **kwargs
     ) -> 'QdrantVectorStore':
         """获取或创建Qdrant实例（单例模式）"""
+        # 学习提示：缓存键仅含 URL 和集合名，不含密钥、维度或距离；复用时不会按新参数重建已有对象。
         # 创建唯一键
         key = (url or "local", collection_name)
         
@@ -130,6 +134,7 @@ class QdrantVectorStore:
         
     def _initialize_client(self):
         """初始化Qdrant客户端和集合"""
+        # 学习提示：未传 URL 时连接 localhost:6333 的服务，不是自动启动数据库，也不是内存数据库。
         try:
             # 根据配置创建客户端连接
             if self.url and self.api_key:
@@ -173,6 +178,7 @@ class QdrantVectorStore:
     
     def _ensure_collection(self):
         """确保集合存在，不存在则创建"""
+        # 学习提示：不存在就创建；已有集合会复用并尝试更新 HNSW，不能据此认定已迁移向量维度。
         try:
             # 检查集合是否存在
             collections = self.client.get_collections().collections
@@ -213,6 +219,7 @@ class QdrantVectorStore:
 
     def _ensure_payload_indexes(self):
         """为常用过滤字段创建payload索引"""
+        # 学习提示：payload 索引加速 user_id/type/namespace 等过滤，不会改变向量语义，也不提供用户鉴权。
         try:
             index_fields = [
                 ("memory_type", models.PayloadSchemaType.KEYWORD),
@@ -258,6 +265,7 @@ class QdrantVectorStore:
         Returns:
             bool: 是否成功
         """
+        # 学习提示：vectors、metadata、ids 应按索引一一对应；当前 zip 按最短长度结束，数量不一致可能丢项。
         try:
             if not vectors:
                 logger.warning("⚠️ 向量列表为空")
@@ -349,6 +357,7 @@ class QdrantVectorStore:
         Returns:
             List[Dict]: 搜索结果
         """
+        # 学习提示：先检查维度，再把标量 where 条件组合为 AND 过滤；不支持的复杂条件不会自动变成范围查询。
         try:
             if len(query_vector) != self.vector_size:
                 logger.error(f"❌ 查询向量维度错误: 期望{self.vector_size}, 实际{len(query_vector)}")
@@ -433,6 +442,7 @@ class QdrantVectorStore:
         Returns:
             bool: 是否成功
         """
+        # 学习提示：这里按 Qdrant 点主键删除；若业务 ID 曾被映射，应使用对应主键或按 payload 删除接口。
         try:
             if not ids:
                 return True
@@ -459,6 +469,7 @@ class QdrantVectorStore:
         Returns:
             bool: 是否成功
         """
+        # 学习提示：直接删掉整个集合再创建，不包含用户/namespace 过滤；共享集合中的所有数据都会受影响。
         try:
             # 删除并重新创建集合
             self.client.delete_collection(collection_name=self.collection_name)
@@ -478,6 +489,7 @@ class QdrantVectorStore:
         注意：由于写入时可能将非UUID的点ID转换为UUID，这里不再依赖点ID，
         而是通过payload中的memory_id来匹配删除，确保一致性。
         """
+        # 学习提示：使用 payload.memory_id 匹配记录，解决业务 ID 与点主键不一致的删除定位问题。
         try:
             if not memory_ids:
                 return
@@ -542,6 +554,7 @@ class QdrantVectorStore:
         Returns:
             bool: 服务是否健康
         """
+        # 学习提示：轻量检查连接是否响应，不验证召回正确性、向量模型一致性或全部读写权限。
         try:
             # 尝试获取集合列表
             collections = self.client.get_collections()
