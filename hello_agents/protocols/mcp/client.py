@@ -1,3 +1,7 @@
+# 主链路：构造传输配置 → async with 建立 SDK 连接 → list/call/read/get → 退出上下文释放连接。
+# 协议消息、协商及传输细节由实际安装的 FastMCP/SDK 处理；本层主要适配输入类型与结果形状。
+# 依赖文件约束 fastmcp 2.x；代码没有自行固定 MCP 协议修订版，不能用包装类名称推定互操作性。
+
 """
 增强的 MCP 客户端实现
 
@@ -82,6 +86,7 @@ class MCPClient:
         Raises:
             ImportError: 如果 fastmcp 库未安装
         """
+        # 学习提示：保存启动参数并准备传输对象；真正进入 SDK 连接发生在 __aenter__，不是构造方法完成时。
         if not FASTMCP_AVAILABLE:
             raise ImportError(
                 "Enhanced MCP client requires the 'fastmcp' library (version 2.0+). "
@@ -98,6 +103,7 @@ class MCPClient:
 
     def _prepare_server_source(self, server_source: Union[str, List[str], FastMCP, Dict[str, Any]]):
         """准备服务器源，根据类型创建合适的传输配置"""
+        # 学习提示：按实例、字典、URL、.py 路径、命令列表顺序分派；transport_type 目前只在 URL 分支选择 SSE/HTTP。
         
         # 1. FastMCP 实例 - 内存传输
         if isinstance(server_source, FastMCP):
@@ -155,6 +161,7 @@ class MCPClient:
 
     def _create_transport_from_config(self, config: Dict[str, Any]):
         """从配置字典创建传输"""
+        # 学习提示：字典中的 env/cwd/headers/auth 直接交给 SDK；首个 args 是 .py 时走 Python 专用传输，不使用 command 选择其他解释器。
         transport_type = config.get("transport", "stdio")
         
         if transport_type == "stdio":
@@ -197,6 +204,7 @@ class MCPClient:
 
     async def __aenter__(self):
         """异步上下文管理器入口"""
+        # 学习提示：必须在异步上下文内使用工具等方法；SDK 负责连接生命周期，stdio 路径可能启动真实子进程。
         print("🔗 连接到 MCP 服务器...")
         self.client = Client(self.server_source)
         self._context_manager = self.client
@@ -206,6 +214,7 @@ class MCPClient:
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """异步上下文管理器出口"""
+        # 学习提示：先让 SDK 清理，再清空本地引用；若 SDK 清理抛异常，后面的引用重置不会执行。
         if self._context_manager:
             await self._context_manager.__aexit__(exc_type, exc_val, exc_tb)
             self.client = None
@@ -214,6 +223,7 @@ class MCPClient:
 
     async def list_tools(self) -> List[Dict[str, Any]]:
         """列出所有可用的工具"""
+        # 学习提示：仅发现名称、说明和 input_schema，不执行工具；工具 schema 不等于授权执行其动作。
         if not self.client:
             raise RuntimeError("Client not connected. Use 'async with client:' context manager.")
 
@@ -238,6 +248,7 @@ class MCPClient:
 
     async def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Any:
         """调用 MCP 工具"""
+        # 学习提示：会触发服务端真实处理器。当前包装只提取 content 中 text/data，未保留完整 isError/structuredContent 等结果信息。
         if not self.client:
             raise RuntimeError("Client not connected. Use 'async with client:' context manager.")
 
@@ -259,6 +270,7 @@ class MCPClient:
 
     async def list_resources(self) -> List[Dict[str, Any]]:
         """列出所有可用的资源"""
+        # 学习提示：当前按 result.resources 读取列表；实际 SDK 若直接返回 list，需要另行适配，不能仅因 list_tools 已兼容就推定这里兼容。
         if not self.client:
             raise RuntimeError("Client not connected. Use 'async with client:' context manager.")
 
@@ -275,6 +287,7 @@ class MCPClient:
 
     async def read_resource(self, uri: str) -> Any:
         """读取资源内容"""
+        # 学习提示：资源 URI 交给服务端解析；这里只提取 text/blob，不自动下载 URI、解码二进制或保存文件。
         if not self.client:
             raise RuntimeError("Client not connected. Use 'async with client:' context manager.")
 
@@ -296,6 +309,7 @@ class MCPClient:
 
     async def list_prompts(self) -> List[Dict[str, Any]]:
         """列出所有可用的提示词模板"""
+        # 学习提示：列出模板及参数描述，不代表生成模板内容；当前按 result.prompts 属性读取结果。
         if not self.client:
             raise RuntimeError("Client not connected. Use 'async with client:' context manager.")
 
@@ -311,6 +325,7 @@ class MCPClient:
 
     async def get_prompt(self, prompt_name: str, arguments: Optional[Dict[str, str]] = None) -> List[Dict[str, Any]]:
         """获取提示词内容"""
+        # 学习提示：获取模板渲染后的消息列表；返回消息后仍需应用决定是否交给大模型，SDK 不在这里完成模型推理。
         if not self.client:
             raise RuntimeError("Client not connected. Use 'async with client:' context manager.")
 
@@ -329,6 +344,7 @@ class MCPClient:
 
     async def ping(self) -> bool:
         """测试服务器连接"""
+        # 学习提示：成功只表示 SDK ping 未抛异常，不验证所有工具的参数、权限和业务执行结果。
         if not self.client:
             raise RuntimeError("Client not connected. Use 'async with client:' context manager.")
         
@@ -340,6 +356,7 @@ class MCPClient:
 
     def get_transport_info(self) -> Dict[str, Any]:
         """获取传输信息"""
+        # 学习提示：根据本地 client 引用与 transport 属性描述状态，没有执行额外探活；connected 不等于远端仍健康。
         if not self.client:
             return {"status": "not_connected"}
         

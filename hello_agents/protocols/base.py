@@ -1,3 +1,6 @@
+# 本文件只描述协议名称/版本的共同概念，具体客户端和服务端不依赖继承此类实现通信。
+# 这里的 version 是普通对象属性，不是 MCP 会话中由 SDK 实际协商的 protocolVersion。
+
 """协议基类（概念性）
 
 本模块定义了协议的基本接口概念。
@@ -42,17 +45,20 @@ class Protocol:
             protocol_type: 协议类型
             version: 协议版本
         """
+        # 学习提示：保存协议类型枚举与版本说明；构造对象不启动服务器，也不验证版本兼容性。
         self._protocol_type = protocol_type
         self._version = version
     
     @property
     def protocol_name(self) -> str:
         """获取协议名称"""
+        # 学习提示：@property 允许像属性一样访问 protocol_name，返回枚举的字符串值。
         return self._protocol_type.value
     
     @property
     def version(self) -> str:
         """获取协议版本"""
+        # 学习提示：直接返回构造时保存的版本；不是从远程端点查询得到的运行状态。
         return self._version
     
     def __str__(self) -> str:

@@ -1,3 +1,6 @@
+# 这些函数构造应用层字典，方便保存上下文和响应；不是 MCP SDK 的 JSON-RPC 编解码实现。
+# 它们不会发送请求、协商能力、执行工具，也不会自动校验内容是否符合某个协议修订版。
+
 """
 MCP 协议工具函数
 
@@ -33,6 +36,7 @@ def create_context(
         ...     tools=[{"name": "calculator", "description": "计算器"}]
         ... )
     """
+    # 学习提示：非空列表/字典直接放进结果，没有深拷贝；调用方后续修改这些对象可能影响上下文。
     return {
         "messages": messages or [],
         "tools": tools or [],
@@ -58,6 +62,7 @@ def parse_context(context: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
         >>> context_str = '{"messages": [], "tools": []}'
         >>> parsed = parse_context(context_str)
     """
+    # 学习提示：字符串先做 JSON 解析，只检查顶层是 dict；setdefault 会原地补字段，不校验字段值的类型。
     if isinstance(context, str):
         try:
             context = json.loads(context)
@@ -94,6 +99,7 @@ def create_error_response(
     Example:
         >>> error = create_error_response("Tool not found", "TOOL_NOT_FOUND")
     """
+    # 学习提示：这是自定义 error 包装，不是自动满足 JSON-RPC 的 id/code/message 错误信封。
     response = {
         "error": {
             "message": error_message,
@@ -124,6 +130,7 @@ def create_success_response(
     Example:
         >>> response = create_success_response({"result": 42})
     """
+    # 学习提示：success/data 是应用层约定，不能替代 MCP SDK 规定的工具结果或资源内容结构。
     response = {
         "success": True,
         "data": data

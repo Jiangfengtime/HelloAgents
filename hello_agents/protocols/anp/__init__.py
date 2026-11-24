@@ -1,3 +1,6 @@
+# 本子包提供概念性服务发现与网络接口；便捷函数只是构造 ServiceInfo 并调用内存注册表。
+# 当前路径不导入或调用 agent-connect 的加密、认证或网络发送接口，不能视为已具备这些能力。
+
 """ANP (Agent Network Protocol) 协议实现
 
 概念性实现，提供简洁的 API 用于：
@@ -44,6 +47,7 @@ def register_service(
            metadata={"version": "1.0"}
        )
     """
+    # 学习提示：已有 ServiceInfo 直接登记；否则校验三个必填值并构造对象，两条路径最后都写入 discovery 字典。
     if service is not None:
         # 方式1：直接传入 ServiceInfo 对象
         return discovery.register_service(service)
@@ -64,6 +68,7 @@ def register_service(
 
 def discover_service(discovery: ANPDiscovery, service_type: str = None):
     """发现服务的便捷函数"""
+    # 学习提示：仅按 service_type 调用当前内存发现器，没有发出网络发现请求。
     return discovery.discover_services(service_type=service_type)
 
 __all__ = [

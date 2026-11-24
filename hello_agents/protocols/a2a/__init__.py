@@ -1,3 +1,6 @@
+# A2A 导出层包含历史别名和占位 API；别名存在不代表实现了独立 Agent 或结构化消息协议。
+# 实际 implementation.py 用 Flask/requests 构造 HTTP 路由；create_message/parse_message 在此仍直接抛错。
+
 """A2A (Agent-to-Agent Protocol) 协议实现
 
 基于官方 a2a 库的封装，提供简洁的 API 用于：
@@ -47,9 +50,11 @@ MessageType = str
 
 def create_message(*args, **kwargs):
     """创建 A2A 消息（占位符）"""
+    # 学习提示：当前始终抛 ImportError，即使已经安装依赖也没有构造消息逻辑。
     raise ImportError("Please install a2a library: pip install a2a")
 
 def parse_message(*args, **kwargs):
     """解析 A2A 消息（占位符）"""
+    # 学习提示：当前为未实现的占位入口，不会解析已有消息。
     raise ImportError("Please install a2a library: pip install a2a")
 

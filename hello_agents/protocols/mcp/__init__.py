@@ -1,3 +1,6 @@
+# MCP 子包导出连接客户端、FastMCP 服务包装与上下文辅助函数；可选导入失败时提供报错占位类。
+# 当前 client.py 和 server.py 都依赖 FastMCP；以各文件实际 import 为准，不仅看历史安装提示。
+
 """MCP (Model Context Protocol) 协议实现
 
 基于 fastmcp 和 mcp 库的封装，提供简洁的 API 用于：
