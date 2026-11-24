@@ -13,11 +13,14 @@ from pydantic import BaseModel
 
 class MemoryItem(BaseModel):
     """记忆项数据结构"""
+    # id 用于跨存储定位同一条记忆；不是正文的语义向量或用户标识。
     id: str
     content: str
     memory_type: str
+    # 记录归属，供检索过滤；字段本身不实现更新、删除等操作的权限检查。
     user_id: str
     timestamp: datetime
+    # 重要性用于排序/淘汰，不是事实置信度；此字段未声明 0～1 的范围约束。
     importance: float = 0.5
     metadata: Dict[str, Any] = {}
 
@@ -28,6 +31,7 @@ class MemoryConfig(BaseModel):
     """记忆系统配置"""
     
     # 存储路径
+    # 情景/感知记忆在此目录保存 SQLite；Qdrant、Neo4j 的连接另行配置。
     storage_path: str = "./memory_data"
     
     # 统计显示用的基础配置（仅用于展示）
@@ -38,6 +42,7 @@ class MemoryConfig(BaseModel):
     # 工作记忆特定配置
     working_memory_capacity: int = 10
     working_memory_tokens: int = 2000
+    # TTL 在添加、检索等入口惰性清理，不是后台定时任务。
     working_memory_ttl_minutes: int = 120
 
     # 感知记忆特定配置
@@ -51,6 +56,7 @@ class BaseMemory(ABC):
 
     def __init__(self, config: MemoryConfig, storage_backend=None):
         self.config = config
+        # 这里只保存后端引用；具体子类还可能自行初始化数据库，并不统一使用它。
         self.storage = storage_backend
         self.memory_type = self.__class__.__name__.lower().replace("memory", "")
 

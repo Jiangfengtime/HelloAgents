@@ -35,6 +35,7 @@ class MemoryTool(Tool):
 
         # 初始化记忆管理器
         self.memory_config = memory_config or MemoryConfig()
+        # 默认同时启用长期后端；学习时可传 ["working"]。空列表因 or 仍会启用默认项。
         self.memory_types = memory_types or ["working", "episodic", "semantic"]
 
         self.memory_manager = MemoryManager(
@@ -62,6 +63,7 @@ class MemoryTool(Tool):
         if not self.validate_parameters(parameters):
             return "❌ 参数验证失败：缺少必需的参数"
 
+        # 模型/应用提供 action，程序据此调用真实组件；工具本身不自动注入每轮对话。
         action = parameters.get("action")
 
         # 根据action调用对应的方法，传入提取的参数
@@ -159,6 +161,7 @@ class MemoryTool(Tool):
         Returns:
             执行结果
         """
+        # 由工具层补会话和模态信息，再交给管理器；使用明确类型，下面关闭自动分类。
         metadata = {}
         try:
             # 确保会话ID存在
@@ -247,6 +250,7 @@ class MemoryTool(Tool):
                     "perceptual": "感知记忆"
                 }.get(memory.memory_type, memory.memory_type)
 
+                # 工具回填只包含预览；正文超过 80 字符时，模型不会从此结果看到全部细节。
                 content_preview = memory.content[:80] + "..." if len(memory.content) > 80 else memory.content
                 formatted_results.append(
                     f"{i}. [{memory_type_label}] {content_preview} (重要性: {memory.importance:.2f})"
@@ -293,6 +297,7 @@ class MemoryTool(Tool):
                     summary_parts.append(f"  • {type_label}: {count} 条 (平均重要性: {avg_importance:.2f})")
 
             # 获取重要记忆 - 修复重复问题
+            # 这是检索+排序+字符串拼接，不调用模型生成摘要；空 query 的召回取决于各类型。
             important_memories = self.memory_manager.retrieve_memories(
                 query="",
                 memory_types=None,  # 从所有类型中检索
@@ -361,6 +366,8 @@ class MemoryTool(Tool):
 
         这个方法可以被Agent调用来自动记录对话历史
         """
+        # 当前 Agent 没有自动调用本方法。下方额外传入 type/conversation_id，
+        # 与 _add_memory 签名不匹配，会抛 TypeError；方法名 auto 不代表记录已成功。
         self.conversation_count += 1
         # 记录用户输入
         self._add_memory(

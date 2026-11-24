@@ -57,6 +57,7 @@ class EpisodicMemory(BaseMemory):
         super().__init__(config, storage_backend)
         
         # 本地缓存（内存）
+        # 缓存用于当前进程的会话/模式分析与部分回退；不能当作完整的持久化历史。
         self.episodes: List[Episode] = []
         self.sessions: Dict[str, List[str]] = {}  # session_id -> episode_ids
         
@@ -68,6 +69,7 @@ class EpisodicMemory(BaseMemory):
         db_dir = self.config.storage_path if hasattr(self.config, 'storage_path') else "./memory_data"
         os.makedirs(db_dir, exist_ok=True)
         db_path = os.path.join(db_dir, "memory.db")
+        # 正文与结构化属性保存到 SQLite，Qdrant 负责相似度检索，两者职责不同。
         self.doc_store = SQLiteDocumentStore(db_path=db_path)
 
         # 统一嵌入模型（多语言，默认384维）
@@ -88,6 +90,7 @@ class EpisodicMemory(BaseMemory):
     def add(self, memory_item: MemoryItem) -> str:
         """添加情景记忆"""
         # 从元数据中提取情景信息
+        # 同一个 user 可以有多个 session；会话归类来自 metadata，不由模型自动识别。
         session_id = memory_item.metadata.get("session_id", "default_session")
         context = memory_item.metadata.get("context", {})
         outcome = memory_item.metadata.get("outcome")
@@ -129,6 +132,7 @@ class EpisodicMemory(BaseMemory):
         )
 
         # 2) 向量索引（Qdrant）
+        # SQLite 写入和向量写入不是一个事务，需留意部分成功时的索引一致性。
         try:
             embedding = self.embedder.encode(memory_item.content)
             if hasattr(embedding, "tolist"):
@@ -159,6 +163,7 @@ class EpisodicMemory(BaseMemory):
         importance_threshold: Optional[float] = kwargs.get("importance_threshold")
 
         # 结构化过滤候选（来自权威库）
+        # 时间/重要性先在 SQLite 形成允许的 ID 集合，再与向量候选求交。
         candidate_ids: Optional[set] = None
         if time_range is not None or importance_threshold is not None:
             start_ts = int(time_range[0].timestamp()) if time_range else None
@@ -210,6 +215,7 @@ class EpisodicMemory(BaseMemory):
                 continue
 
             # 从权威库读取完整记录
+            # 命中向量不直接返回其 payload；按 memory_id 从权威存储读取完整记录。
             doc = self.doc_store.get_memory(mem_id)
             if not doc:
                 continue
@@ -248,6 +254,7 @@ class EpisodicMemory(BaseMemory):
             seen.add(mem_id)
 
         # 若向量检索无结果，回退到简单关键词匹配（内存缓存）
+        # 这里回退查询的是当前内存缓存，并没有重新遍历 SQLite 的所有历史记录。
         if not results:
             fallback = super()._generate_id  # 占位以避免未使用警告
             query_lower = query.lower()

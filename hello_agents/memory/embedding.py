@@ -247,6 +247,7 @@ def create_embedding_model_with_fallback(preferred_type: str = "dashscope", **kw
     """带回退的创建：dashscope -> local -> tfidf"""
     if preferred_type in ("sentence_transformer", "huggingface"):
         preferred_type = "local"
+    # 这里只捕获创建阶段异常；若后端到 encode 时才失败，不会自动重新选择下一个后端。
     fallback = ["dashscope", "local", "tfidf"]
     # 将首选放最前
     if preferred_type in fallback:

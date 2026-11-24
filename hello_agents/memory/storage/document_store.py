@@ -281,6 +281,7 @@ class SQLiteDocumentStore(DocumentStore):
         cursor = conn.cursor()
         
         # 构建查询条件
+        # 查询组合结构化过滤条件，不做文本语义检索；相似度搜索由向量层负责。
         where_conditions = []
         params = []
         

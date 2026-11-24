@@ -35,6 +35,7 @@ class WorkingMemory(BaseMemory):
         self.session_start = datetime.now()
         
         # 内存存储（工作记忆不需要持久化）
+        # 列表/堆属于当前对象，重启进程不会从磁盘恢复；与 Agent._history 也是两套状态。
         self.memories: List[MemoryItem] = []
         
         # 使用优先级队列管理记忆
@@ -79,6 +80,7 @@ class WorkingMemory(BaseMemory):
             return []
 
         # 尝试语义向量检索（如果有嵌入模型）
+        # 此处向量来自本次 query+候选文本临时拟合的 TF-IDF，不是远程嵌入 API。
         vector_scores = {}
         try:
             # 简单的语义相似度计算（使用TF-IDF或其他轻量级方法）
@@ -90,6 +92,7 @@ class WorkingMemory(BaseMemory):
             documents = [query] + [m.content for m in filtered_memories]
             
             # TF-IDF向量化
+            # 默认词项规则不是专用中文分词；中文无空格文本的匹配能力需单独观察。
             vectorizer = TfidfVectorizer(stop_words=None, lowercase=True)
             tfidf_matrix = vectorizer.fit_transform(documents)
             
@@ -107,6 +110,7 @@ class WorkingMemory(BaseMemory):
             vector_scores = {}
 
         # 计算最终分数
+        # kwargs 中的 min_importance 当前未用于过滤；不要把管理器参数当作已生效。
         query_lower = query.lower()
         scored_memories = []
         
@@ -140,6 +144,7 @@ class WorkingMemory(BaseMemory):
             
             # 重要性权重
             importance_weight = 0.8 + (memory.importance * 0.4)
+            # 相关性为基础，时间衰减后再乘重要性；完全不相关的记录不会仅因重要而命中。
             final_score = base_relevance * importance_weight
             
             if final_score > 0:
@@ -288,6 +293,7 @@ class WorkingMemory(BaseMemory):
         to_remove = []
         
         # 始终先执行TTL过期（分钟级）
+        # 无论选择哪一种遗忘策略，先清理 TTL 到期项；这里最终调用 remove 物理删除。
         cutoff_ttl = current_time - timedelta(minutes=self.max_age_minutes)
         for memory in self.memories:
             if memory.timestamp < cutoff_ttl:

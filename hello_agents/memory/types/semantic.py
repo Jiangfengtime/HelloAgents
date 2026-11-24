@@ -105,6 +105,7 @@ class SemanticMemory(BaseMemory):
         # 专业数据库存储
         self.vector_store = None
         self.graph_store = None
+        # 构造阶段就初始化向量库和图库；仅实例化也可能涉及外部服务。
         self._init_databases()
         
         # 实体和关系缓存 (用于快速访问)
@@ -222,6 +223,7 @@ class SemanticMemory(BaseMemory):
             self.memory_embeddings[memory_item.id] = embedding
             
             # 2. 提取实体和关系
+            # 实体/关系由本文件的 NLP 与规则逻辑提取；不能直接等同于大模型知识抽取。
             entities = self._extract_entities(memory_item.content)
             relations = self._extract_relations(memory_item.content, entities)
             
@@ -233,6 +235,8 @@ class SemanticMemory(BaseMemory):
                 self._add_relation_to_graph(relation, memory_item)
             
             # 4. 存储到Qdrant向量数据库
+            # 向量 payload 保存正文、用户、实体 ID 等，便于命中后恢复成 MemoryItem。
+            # Neo4j 和 Qdrant 分步写入，当前不具备跨数据库原子提交。
             metadata = {
                 "memory_id": memory_item.id,
                 "user_id": memory_item.user_id,
@@ -279,6 +283,7 @@ class SemanticMemory(BaseMemory):
             vector_results = self._vector_search(query, limit * 2, user_id)
             
             # 2. 图检索
+            # 向量路由找文本相关性，图路由找实体关系；随后统一合并与排序。
             graph_results = self._graph_search(query, limit * 2, user_id)
             
             # 3. 混合排序
@@ -293,6 +298,7 @@ class SemanticMemory(BaseMemory):
                 max_s = max(scores)
                 exps = [math.exp(s - max_s) for s in scores]
                 denom = sum(exps) or 1.0
+                # softmax 是本批候选的相对权重，不是事实正确率，也不是经过校准的置信度。
                 probs = [e / denom for e in exps]
             else:
                 probs = []

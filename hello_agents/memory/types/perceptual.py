@@ -69,6 +69,7 @@ class PerceptualMemory(BaseMemory):
         self.modality_index: Dict[str, List[str]] = {}  # modality -> perception_ids
         
         # 支持的模态
+        # 配置决定可接收的模态名；出现 video 不代表已经具备视频理解模型。
         self.supported_modalities = set(self.config.perceptual_memory_modalities)
         
         # 文档权威存储（SQLite）
@@ -91,6 +92,7 @@ class PerceptualMemory(BaseMemory):
         try:
             from transformers import CLIPModel, CLIPProcessor
             clip_name = os.getenv("CLIP_MODEL", "openai/clip-vit-base-patch32")
+            # 本地无权重缓存时可能下载模型；感知记忆构造不同于纯内存工作记忆。
             self._clip_model = CLIPModel.from_pretrained(clip_name)
             self._clip_processor = CLIPProcessor.from_pretrained(clip_name)
             # 估计输出维度
@@ -150,6 +152,7 @@ class PerceptualMemory(BaseMemory):
     def add(self, memory_item: MemoryItem) -> str:
         """添加感知记忆（SQLite权威 + Qdrant向量）"""
         modality = memory_item.metadata.get("modality", "text")
+        # content 可存人类可读描述；raw_data 存实际输入（如文件路径），两者不是同一概念。
         raw_data = memory_item.metadata.get("raw_data", memory_item.content)
         if modality not in self.supported_modalities:
             raise ValueError(f"不支持的模态类型: {modality}")
@@ -531,6 +534,7 @@ class PerceptualMemory(BaseMemory):
     
     def _encode_perception(self, data: Any, modality: str, memory_id: str) -> Perception:
         """编码感知数据"""
+        # 编码只产生检索表示，不生成问答；是否具有语义能力取决于实际可用编码器。
         encoding = self._encode_data(data, modality)
         
         perception = Perception(
@@ -545,6 +549,7 @@ class PerceptualMemory(BaseMemory):
     
     def _encode_data(self, data: Any, modality: str) -> List[float]:
         """编码数据为固定维度向量（按模态维度对齐）"""
+        # 补零/截断只是对齐尺寸，不会把不同模型的向量空间变成兼容的语义空间。
         target_dim = self._get_dim_for_modality(modality)
         encoder = self.encoders.get(modality, self._default_encoder)
         vec = encoder(data)

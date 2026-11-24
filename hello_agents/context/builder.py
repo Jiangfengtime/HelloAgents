@@ -140,6 +140,8 @@ class ContextBuilder:
             ))
         
         # P1: 从记忆中获取任务状态与关键结论
+        # 显式传入 MemoryTool 才检索外部记忆；未接入 builder 的 Agent 不会自动走本分支。
+        # 得到的文本仍会经过 Select/Compress，检索成功不保证所有内容最终进入模型。
         if self.memory_tool:
             try:
                 # 搜索任务状态相关记忆

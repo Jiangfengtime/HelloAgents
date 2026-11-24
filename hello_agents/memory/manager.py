@@ -34,6 +34,7 @@ class MemoryManager:
         enable_perceptual: bool = False
     ):
         self.config = config or MemoryConfig()
+        # 一个管理器绑定一个用户；新增记录与检索条件都使用这个标识。
         self.user_id = user_id
         
         # 存储和检索功能已移至各记忆类型内部实现
@@ -86,6 +87,7 @@ class MemoryManager:
             importance = self._calculate_importance(content, metadata)
         
         # 创建记忆项
+        # 统一封装数据再分派：管理器不直接写 SQL，也不直接生成检索向量。
         memory_item = MemoryItem(
             id=str(uuid.uuid4()),
             content=content,
@@ -138,6 +140,8 @@ class MemoryManager:
                 memory_instance = self.memory_types[memory_type]
                 try:
                     # 使用各个记忆类型自己的检索方法
+                    # 各类型内部先按自己的相关性规则取候选；后面的汇总会再次按重要性排序。
+                    # min_importance 是否生效取决于子类；情景类型当前使用 importance_threshold 名称。
                     type_results = memory_instance.retrieve(
                         query=query,
                         limit=per_type_limit,
@@ -146,6 +150,7 @@ class MemoryManager:
                     )
                     all_results.extend(type_results)
                 except Exception as e:
+                    # 某类失败后继续查询其他类型；返回空结果不一定意味着数据库里没有数据。
                     logger.warning(f"检索 {memory_type} 记忆时出错: {e}")
                     continue
 
@@ -173,6 +178,7 @@ class MemoryManager:
             是否更新成功
         """
         # 查找记忆所在的类型
+        # 此处按 ID 查找，不再检查 user_id；对外暴露更新接口时需额外验证记录归属。
         for memory_type, memory_instance in self.memory_types.items():
             if memory_instance.has_memory(memory_id):
                 return memory_instance.update(memory_id, content, importance, metadata)
@@ -214,6 +220,7 @@ class MemoryManager:
         """
         total_forgotten = 0
         
+        # 统一入口只转发策略；各类型可以选择物理删除或其他遗忘实现。
         for memory_type, memory_instance in self.memory_types.items():
             if hasattr(memory_instance, 'forget'):
                 forgotten = memory_instance.forget(strategy, threshold, max_age_days)
@@ -247,6 +254,7 @@ class MemoryManager:
         target_memory = self.memory_types[to_type]
 
         # 获取需要整合的记忆
+        # 整合是迁移现有记录，不调用模型做摘要；get_all 的范围由源类型实现决定。
         all_memories = source_memory.get_all()
         candidates = [
             m for m in all_memories
@@ -256,8 +264,10 @@ class MemoryManager:
         consolidated_count = 0
         for memory in candidates:
             # 移动到目标记忆类型
+            # 注意当前顺序：先删除源记录，再写目标；目标失败时没有事务回滚，存在丢失风险。
             if source_memory.remove(memory.id):
                 memory.memory_type = to_type
+                # 原地提高重要性，当前没有再次限制到 1.0，也不是模型评估的新分数。
                 memory.importance *= 1.1  # 提升重要性
                 target_memory.add(memory)
                 consolidated_count += 1
@@ -298,6 +308,7 @@ class MemoryManager:
 
     def _classify_memory_type(self, content: str, metadata: Optional[Dict[str, Any]]) -> str:
         """自动分类记忆类型"""
+        # 程序规则分类，不调用大模型；显式 metadata.type 优先于正文关键词。
         if metadata and metadata.get("type"):
             return metadata["type"]
         
@@ -321,6 +332,7 @@ class MemoryManager:
     
     def _calculate_importance(self, content: str, metadata: Optional[Dict[str, Any]]) -> float:
         """计算记忆重要性"""
+        # 长度、关键词、priority 的启发式加减分；只有调用方未传 importance 才走这里。
         importance = 0.5  # 基础重要性
         
         # 基于内容长度
