@@ -1,3 +1,6 @@
+# 搜索主线：run 解析选项 → 选择后端 → 统一结果字段 → 返回字典或格式化文本。
+# hybrid/advanced 当前是 Tavily→SerpApi→DuckDuckGo 顺序回退，不是并发聚合所有搜索源。
+
 """搜索工具 - HelloAgents 原生搜索实现。"""
 
 from __future__ import annotations
@@ -47,6 +50,7 @@ SUPPORTED_BACKENDS = {
 
 
 def _limit_text(text: str, token_limit: int) -> str:
+    # 学习提示：按 token_limit×4 个字符近似截断，不使用 tokenizer，也不限制整次搜索全部输出。
     char_limit = token_limit * CHARS_PER_TOKEN
     if len(text) <= char_limit:
         return text
@@ -54,6 +58,7 @@ def _limit_text(text: str, token_limit: int) -> str:
 
 
 def _fetch_raw_content(url: str) -> str | None:
+    # 学习提示：直接读取 URL 响应并可选转 Markdown；没有浏览器执行，也没有统一的内网地址/响应大小校验。
     try:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
@@ -76,6 +81,7 @@ def _normalized_result(
     content: str,
     raw_content: str | None,
 ) -> Dict[str, str]:
+    # 学习提示：统一 title/url/content/raw_content 字段；不同后端的 raw_content 可能仍只是摘要。
     payload: Dict[str, str] = {
         "title": title or url,
         "url": url,
@@ -93,6 +99,7 @@ def _structured_payload(
     answer: str | None = None,
     notices: Iterable[str] | None = None,
 ) -> Dict[str, Any]:
+    # 学习提示：以统一字典封装结果、来源、可选直接答案和提示信息，不在这里生成模型回答。
     return {
         "results": list(results),
         "backend": backend,
@@ -111,6 +118,7 @@ class SearchTool(Tool):
         serpapi_key: str | None = None,
         perplexity_key: str | None = None,
     ) -> None:
+        # 学习提示：显式密钥优先于环境变量；本文件不调用 load_dotenv，需要应用先加载配置。
         super().__init__(
             name="search",
             description=(
@@ -131,6 +139,7 @@ class SearchTool(Tool):
     # Public API
     # ------------------------------------------------------------------
     def run(self, parameters: Dict[str, Any]) -> str | Dict[str, Any]:  # type: ignore[override]
+        # 学习提示：input 优先于 query；mode=json/dict/structured 都返回 Python 字典，bool("false") 仍为真。
         query = (parameters.get("input") or parameters.get("query") or "").strip()
         if not query:
             return "错误：搜索查询不能为空"
@@ -166,6 +175,7 @@ class SearchTool(Tool):
         return self._format_text_response(query=query, payload=payload)
 
     def get_parameters(self) -> List[ToolParameter]:
+        # 学习提示：目前只向工具 schema 声明 input；直接 run 支持的高级参数不会自动全部暴露给模型。
         return [
             ToolParameter(
                 name="input",
@@ -179,6 +189,7 @@ class SearchTool(Tool):
     # Internal helpers
     # ------------------------------------------------------------------
     def _setup_backends(self) -> None:
+        # 学习提示：只登记 Tavily/SerpApi 并准备客户端；初始化成功不表示密钥有效或搜索请求已成功。
         if self.tavily_key and TavilyClient is not None:
             try:
                 self.tavily_client = TavilyClient(api_key=self.tavily_key)
@@ -230,6 +241,7 @@ class SearchTool(Tool):
         loop_count: int,
     ) -> Dict[str, Any]:
         # 统一将 hybrid 视作 advanced，以保持向后兼容的优先级逻辑
+        # 学习提示：hybrid 映射为 advanced，其余按名称直接调用；显式后端异常没有统一在此转换成 payload。
         target_backend = "advanced" if backend == "hybrid" else backend
 
         if target_backend == "tavily":
@@ -287,6 +299,7 @@ class SearchTool(Tool):
         max_results: int,
         max_tokens: int,
     ) -> Dict[str, Any]:
+        # 学习提示：通过 SDK 取得摘要或原文；answer 仅在外部响应包含时保留，当前未显式请求 include_answer。
         if not self.tavily_client:
             message = "TAVILY_API_KEY 未配置或 tavily 未安装"
             raise RuntimeError(message)
@@ -325,6 +338,7 @@ class SearchTool(Tool):
         max_results: int,
         max_tokens: int,
     ) -> Dict[str, Any]:
+        # 学习提示：读取 Google organic_results 和 answer_box；fetch_full_page 当前没有额外抓网页全文。
         if not self.serpapi_key:
             raise RuntimeError("SERPAPI_API_KEY 未配置，无法使用 SerpApi 搜索")
         if GoogleSearch is None:
@@ -368,6 +382,7 @@ class SearchTool(Tool):
         max_results: int,
         max_tokens: int,
     ) -> Dict[str, Any]:
+        # 学习提示：先取得搜索摘要，开启全文后逐条请求结果 URL；抓取是顺序执行。
         if DDGS is None:
             raise RuntimeError("未安装 ddgs，无法使用 DuckDuckGo 搜索")
 
@@ -414,6 +429,7 @@ class SearchTool(Tool):
         max_results: int,
         max_tokens: int,
     ) -> Dict[str, Any]:
+        # 学习提示：请求 SEARXNG_URL 的 /search JSON 接口；默认地址要求本机已有服务运行。
         host = os.getenv("SEARXNG_URL", "http://localhost:8888").rstrip("/")
         endpoint = f"{host}/search"
 
@@ -466,6 +482,7 @@ class SearchTool(Tool):
         max_tokens: int,
         loop_count: int,
     ) -> Dict[str, Any]:
+        # 学习提示：直接请求聊天服务，完整回答放 answer；citation 后续项不是逐网页抓取的摘要，loop_count 只影响标题。
         if not self.perplexity_key:
             raise RuntimeError("PERPLEXITY_API_KEY 未配置，无法使用 Perplexity 搜索")
 
@@ -521,6 +538,7 @@ class SearchTool(Tool):
         max_tokens: int,
         loop_count: int,
     ) -> Dict[str, Any]:
+        # 学习提示：Tavily/SerpApi 首个有结果即返回，否则尝试 DuckDuckGo；未自动加入 SearXNG/Perplexity。
         notices: List[str] = []
         aggregated: List[Dict[str, Any]] = []
         answer: str | None = None
@@ -576,6 +594,7 @@ class SearchTool(Tool):
         )
 
     def _format_text_response(self, *, query: str, payload: Dict[str, Any]) -> str:
+        # 学习提示：文本模式展示 content 与 URL，不展示 raw_content；已获取全文也不代表全部回填给模型。
         answer = payload.get("answer")
         notices = payload.get("notices") or []
         results = payload.get("results") or []
@@ -611,20 +630,24 @@ class SearchTool(Tool):
 # 便捷函数
 
 def search(query: str, backend: str = "hybrid") -> str:
+    # 学习提示：便捷函数每次构造工具并请求服务；反复调用不会在此复用同一个工具对象。
     tool = SearchTool(backend=backend)
     return tool.run({"input": query, "backend": backend})  # type: ignore[return-value]
 
 
 def search_tavily(query: str) -> str:
+    # 学习提示：显式传 backend=tavily，因此 run 会直接尝试该服务；不可用时不自动进入 hybrid 回退链。
     tool = SearchTool(backend="tavily")
     return tool.run({"input": query, "backend": "tavily"})  # type: ignore[return-value]
 
 
 def search_serpapi(query: str) -> str:
+    # 学习提示：显式调用 SerpApi，错误可直接抛出，调用方可自行捕获。
     tool = SearchTool(backend="serpapi")
     return tool.run({"input": query, "backend": "serpapi"})  # type: ignore[return-value]
 
 
 def search_hybrid(query: str) -> str:
+    # 学习提示：使用当前顺序回退逻辑，不会并发请求所有后端。
     tool = SearchTool(backend="hybrid")
     return tool.run({"input": query, "backend": "hybrid"})  # type: ignore[return-value]

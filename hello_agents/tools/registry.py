@@ -1,3 +1,6 @@
+# 注册表是进程内的名称查找表，不是工具代码生成器；保存实例/函数引用后由调用方显式执行。
+# 类工具和普通函数分开保存，执行优先级、参数形状与错误返回需要分别理解。
+
 """工具注册表 - HelloAgents原生工具系统"""
 
 from typing import Optional, Any, Callable
@@ -26,6 +29,7 @@ class ToolRegistry:
             tool: Tool实例
             auto_expand: 是否自动展开可展开的工具（默认True）
         """
+        # 学习提示：成功展开时只登记子工具并提前返回，父名称不一定可调用；应检查 list_tools 的实际名字。
         # 检查工具是否可展开
         if auto_expand and hasattr(tool, 'expandable') and tool.expandable:
             expanded_tools = tool.get_expanded_tools()
@@ -55,6 +59,7 @@ class ToolRegistry:
             description: 工具描述
             func: 工具函数，接受字符串参数，返回字符串结果
         """
+        # 学习提示：普通函数约定接收一个字符串；这里不会分析任意 Python 函数签名生成多个参数。
         if name in self._functions:
             print(f"⚠️ 警告：工具 '{name}' 已存在，将被覆盖。")
 
@@ -66,6 +71,7 @@ class ToolRegistry:
 
     def unregister(self, name: str):
         """注销工具"""
+        # 学习提示：先删除类工具，再考虑同名函数；存在同名两类项时一次调用不会全部删除。
         if name in self._tools:
             del self._tools[name]
             print(f"🗑️ 工具 '{name}' 已注销。")
@@ -77,6 +83,7 @@ class ToolRegistry:
 
     def get_tool(self, name: str) -> Optional[Tool]:
         """获取Tool对象"""
+        # 学习提示：返回保存的同一个实例；多个 Agent 共用注册表时也可能共用工具内部会话状态。
         return self._tools.get(name)
 
     def get_function(self, name: str) -> Optional[Callable]:
@@ -95,6 +102,7 @@ class ToolRegistry:
         Returns:
             工具执行结果
         """
+        # 学习提示：类工具统一获得 {input: 文本}，并非任意复杂参数入口；异常转为错误字符串，不会继续抛出。
         # 优先查找Tool对象
         # 类工具接收参数字典；普通函数分支接收原始字符串。
         if name in self._tools:
@@ -123,6 +131,7 @@ class ToolRegistry:
         Returns:
             工具描述字符串，用于构建提示词
         """
+        # 学习提示：生成给模型阅读的名称和说明，不执行工具，也不证明它们的外部服务可用。
         descriptions = []
 
         # Tool对象描述
@@ -137,6 +146,7 @@ class ToolRegistry:
 
     def list_tools(self) -> list[str]:
         """列出所有工具名称"""
+        # 学习提示：拼接两张映射的键，同名类工具和函数可能使名称重复。
         return list(self._tools.keys()) + list(self._functions.keys())
 
     def get_all_tools(self) -> list[Tool]:
@@ -145,6 +155,7 @@ class ToolRegistry:
 
     def clear(self):
         """清空所有工具"""
+        # 学习提示：只清空本注册表引用，不自动删除工具存储的数据或关闭工具持有的远程服务。
         self._tools.clear()
         self._functions.clear()
         print("🧹 所有工具已清空。")

@@ -1,3 +1,6 @@
+# 记忆集成入口按 action 调用 MemoryManager；真正的记忆类型、检索与存储位于 memory/。
+# 工具注册只提供读写机会，不会自动记录所有对话，也不保证检索结果已进入每轮模型输入。
+
 """记忆工具
 
 为HelloAgents框架提供记忆能力的工具实现。
@@ -27,6 +30,7 @@ class MemoryTool(Tool):
         memory_types: List[str] = None,
         expandable: bool = False
     ):
+        # 学习提示：默认会启用三类记忆，可能初始化长期数据库；只需工作记忆时显式传 memory_types=["working"]。
         super().__init__(
             name="memory",
             description="记忆工具 - 可以存储和检索对话历史、知识和经验",
@@ -60,6 +64,7 @@ class MemoryTool(Tool):
         Returns:
             执行结果字符串
         """
+        # 学习提示：参数验证当前主要检查必填键；不同 action 的必需字段还需在具体方法中确认。
         if not self.validate_parameters(parameters):
             return "❌ 参数验证失败：缺少必需的参数"
 
@@ -113,6 +118,7 @@ class MemoryTool(Tool):
 
     def get_parameters(self) -> List[ToolParameter]:
         """获取工具参数定义 - Tool基类要求的接口"""
+        # 学习提示：公开 action 与各操作参数给模型；同一 schema 包含多个动作不代表每个动作的参数都自动约束。
         return [
             ToolParameter(
                 name="action",
@@ -195,6 +201,7 @@ class MemoryTool(Tool):
 
     def _infer_modality(self, path: str) -> str:
         """根据扩展名推断模态（默认image/audio/text）"""
+        # 学习提示：按文件扩展名推断 image/audio/text，不会读取文件内容判断实际编码。
         try:
             ext = (path.rsplit('.', 1)[-1] or '').lower()
             if ext in {"png", "jpg", "jpeg", "bmp", "gif", "webp"}:
@@ -410,6 +417,7 @@ class MemoryTool(Tool):
         Returns:
             执行结果
         """
+        # 学习提示：按完整 ID 更新；添加时返回的短 ID 预览不能直接当作完整主键使用。
         try:
             metadata = {}
             success = self.memory_manager.update_memory(
@@ -432,6 +440,7 @@ class MemoryTool(Tool):
         Returns:
             执行结果
         """
+        # 学习提示：删除实际记忆，影响范围由对应类型实现决定，不等于只清理对话历史。
         try:
             success = self.memory_manager.remove_memory(memory_id)
             return "✅ 记忆已删除" if success else "⚠️ 未找到要删除的记忆"
@@ -450,6 +459,7 @@ class MemoryTool(Tool):
         Returns:
             执行结果
         """
+        # 学习提示：把策略和阈值交给管理器，各类型按自己的遗忘实现处理。
         try:
             count = self.memory_manager.forget_memories(
                 strategy=strategy,
@@ -472,6 +482,7 @@ class MemoryTool(Tool):
         Returns:
             执行结果
         """
+        # 学习提示：类型间迁移，不是调用模型提炼多条记忆；失败一致性见 MemoryManager 实现。
         try:
             count = self.memory_manager.consolidate_memories(
                 from_type=from_type,
@@ -489,6 +500,7 @@ class MemoryTool(Tool):
         Returns:
             执行结果
         """
+        # 学习提示：逐类型清空，没有确认参数；长期后端的实际删除范围需要在暴露给模型前审查。
         try:
             self.memory_manager.clear_all_memories()
             return "🧽 已清空所有记忆"
@@ -500,6 +512,7 @@ class MemoryTool(Tool):
 
         便捷方法，用于添加重要知识
         """
+        # 学习提示：便捷入口指定语义记忆，要求启用了 semantic 及其依赖。
         return self._add_memory(
             content=content,
             memory_type="semantic",
@@ -513,6 +526,7 @@ class MemoryTool(Tool):
 
         这个方法可以被Agent调用来获取相关的记忆上下文
         """
+        # 学习提示：从检索结果构造上下文文本；调用方仍需显式把返回值加入模型输入。
         results = self.memory_manager.retrieve_memories(
             query=query,
             limit=limit,
@@ -530,6 +544,7 @@ class MemoryTool(Tool):
 
     def clear_session(self):
         """清除当前会话"""
+        # 学习提示：会话状态与工作记忆的清理范围按此实现决定，不等于删除所有长期历史。
         self.current_session_id = None
         self.conversation_count = 0
 

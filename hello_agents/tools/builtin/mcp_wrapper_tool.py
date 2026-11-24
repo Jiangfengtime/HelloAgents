@@ -1,3 +1,6 @@
+# 一个 MCPWrappedTool 对应服务端一个工具，父 MCPTool 负责连接与调用，子工具负责暴露名称和参数。
+# 前缀区分本地注册名；发送给远端的仍是原始 MCP 工具名，不会自动复制远端工具实现。
+
 """
 MCP工具包装器 - 将单个MCP工具包装成HelloAgents Tool
 
@@ -40,6 +43,7 @@ class MCPWrappedTool(Tool):
             tool_info: MCP工具信息（包含name, description, input_schema）
             prefix: 工具名前缀（如 "filesystem_"）
         """
+        # 学习提示：本地 name 可以带前缀，mcp_tool_name 始终保留服务端原名，避免发送错误名称。
         self.mcp_tool = mcp_tool
         self.tool_info = tool_info
         self.mcp_tool_name = tool_info.get('name', 'unknown')
@@ -69,6 +73,7 @@ class MCPWrappedTool(Tool):
         Returns:
             ToolParameter列表
         """
+        # 学习提示：只转换顶层 properties 的类型、说明和 required；嵌套约束、enum/default 等未完整保留。
         parameters = []
 
         properties = input_schema.get('properties', {})
@@ -95,6 +100,7 @@ class MCPWrappedTool(Tool):
         Returns:
             ToolParameter列表
         """
+        # 学习提示：返回缓存的参数列表，没有在这里重新向服务端发现 schema。
         return self._parameters
 
     def run(self, params: Dict[str, Any]) -> str:
@@ -107,6 +113,7 @@ class MCPWrappedTool(Tool):
         Returns:
             执行结果
         """
+        # 学习提示：把当前参数整体放入 arguments，转给父工具 call_tool；包装器自身不执行远程函数。
         # 构建MCP调用参数
         mcp_params = {
             "action": "call_tool",

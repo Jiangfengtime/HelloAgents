@@ -1,3 +1,6 @@
+# BFCL 包装器组织数据集、Agent 执行、结果导出及可选官方命令行评分，可能产生模型调用与文件写入。
+# 本地评分、官方命令执行成功、结果文件存在是不同证据，不能把包装器返回等同于排行榜成绩。
+
 """BFCL评估工具
 
 Berkeley Function Calling Leaderboard (BFCL) 一键评估工具
@@ -61,6 +64,7 @@ class BFCLEvaluationTool(Tool):
             bfcl_data_dir: BFCL数据目录路径（默认：./temp_gorilla/berkeley-function-call-leaderboard/bfcl_eval/data）
             project_root: 项目根目录（默认：当前目录）
         """
+        # 学习提示：保存数据与项目路径并准备输出配置；不会在构造时完成数据集评测。
         super().__init__(
             name="bfcl_evaluation",
             description=(
@@ -78,6 +82,7 @@ class BFCLEvaluationTool(Tool):
 
     def get_parameters(self) -> List[ToolParameter]:
         """获取工具参数定义"""
+        # 学习提示：虽然声明了工具参数，run 实际接收 agent 及独立参数，不是标准 run(dict) 调用契约。
         return [
             ToolParameter(
                 name="agent",
@@ -134,6 +139,7 @@ class BFCLEvaluationTool(Tool):
             - category_metrics: 分类指标
             - detailed_results: 详细结果
         """
+        # 学习提示：传入的 Agent 会真实执行样本；官方评分是可选后续步骤，返回字典是框架自身结果。
         from hello_agents.evaluation import BFCLDataset, BFCLEvaluator
 
         print("\n" + "="*60)
@@ -198,6 +204,7 @@ class BFCLEvaluationTool(Tool):
 
     def _check_bfcl_data(self) -> bool:
         """检查BFCL数据是否存在"""
+        # 学习提示：只检查约定数据路径是否存在，不校验官方数据版本、内容完整性或样本泄漏。
         if not self.bfcl_data_dir.exists():
             print(f"\n❌ BFCL数据目录不存在: {self.bfcl_data_dir}")
             print(f"\n请先克隆BFCL仓库：")
@@ -207,6 +214,7 @@ class BFCLEvaluationTool(Tool):
 
     def _run_official_evaluation(self, source_file: Path, model_name: str, category: str):
         """运行BFCL官方评估"""
+        # 学习提示：复制预测文件后调用外部 bfcl 命令；错误主要打印日志，不把失败自动反映为 run 的异常。
         print("\n" + "="*60)
         print("步骤3: 运行BFCL官方评估")
         print("="*60)
@@ -262,6 +270,7 @@ class BFCLEvaluationTool(Tool):
 
     def _show_official_results(self, model_name: str, category: str):
         """展示BFCL官方评估结果"""
+        # 学习提示：读取已有评分输出，需确认文件来自本次命令而非旧运行残留。
         print("\n" + "="*60)
         print("BFCL官方评估结果")
         print("="*60)
@@ -292,6 +301,7 @@ class BFCLEvaluationTool(Tool):
 
     def _create_error_result(self, error_message: str) -> Dict[str, Any]:
         """创建错误结果"""
+        # 学习提示：构造框架约定的失败字典，调用方应检查错误字段而非只看是否正常返回。
         return {
             "error": error_message,
             "overall_accuracy": 0.0,
@@ -311,6 +321,7 @@ class BFCLEvaluationTool(Tool):
         Returns:
             报告内容（Markdown格式）
         """
+        # 学习提示：按已有结果组织报告并可能写文件，不重新执行样本或验证官方排行榜成绩。
         from datetime import datetime
 
         # 生成报告内容

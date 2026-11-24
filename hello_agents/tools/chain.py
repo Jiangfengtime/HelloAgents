@@ -1,3 +1,6 @@
+# 固定工具链按预设步骤执行，使用 context 把前一步结果填入后一步模板，不由模型动态规划。
+# 链是否应该遇错中止需有显式状态判断；普通错误字符串当前也可能继续进入下一步。
+
 """工具链管理器 - HelloAgents工具链式调用支持"""
 
 from typing import List, Dict, Any, Optional
@@ -21,6 +24,7 @@ class ToolChain:
             input_template: 输入模板，支持变量替换，如 "{input}" 或 "{search_result}"
             output_key: 输出结果的键名，用于后续步骤引用
         """
+        # 学习提示：output_key 决定结果保存位置，后续 input_template 可使用该键；同名键会覆盖之前的值。
         step = {
             "tool_name": tool_name,
             "input_template": input_template,
@@ -41,6 +45,7 @@ class ToolChain:
         Returns:
             最终执行结果
         """
+        # 学习提示：按步骤顺序调用注册表；传入 context 会被原地更新，模板缺键时立即返回错误。
         if not self.steps:
             return "❌ 工具链为空，无法执行"
 
@@ -90,11 +95,13 @@ class ToolChainManager:
 
     def register_chain(self, chain: ToolChain):
         """注册工具链"""
+        # 学习提示：按链名保存同一对象引用，同名会覆盖，不在注册时验证每个工具是否存在。
         self.chains[chain.name] = chain
         print(f"✅ 工具链 '{chain.name}' 已注册")
 
     def execute_chain(self, chain_name: str, input_data: str, context: Dict[str, Any] = None) -> str:
         """执行指定的工具链"""
+        # 学习提示：找到已登记链后交给 execute；这里不额外判断链返回文本是否代表业务成功。
         if chain_name not in self.chains:
             return f"❌ 工具链 '{chain_name}' 不存在"
 
@@ -107,6 +114,7 @@ class ToolChainManager:
 
     def get_chain_info(self, chain_name: str) -> Optional[Dict[str, Any]]:
         """获取工具链信息"""
+        # 学习提示：返回步骤配置用于查看，不运行任何步骤。
         if chain_name not in self.chains:
             return None
         
@@ -129,6 +137,7 @@ class ToolChainManager:
 # 便捷函数
 def create_research_chain() -> ToolChain:
     """创建一个研究工具链：搜索 -> 计算 -> 总结"""
+    # 学习提示：仅构造预设链，示例依赖的工具名需在执行前自行注册。
     chain = ToolChain(
         name="research_and_calculate",
         description="搜索信息并进行相关计算"
@@ -153,6 +162,7 @@ def create_research_chain() -> ToolChain:
 
 def create_simple_chain() -> ToolChain:
     """创建一个简单的工具链示例"""
+    # 学习提示：返回配置好的 ToolChain，不会因创建函数被调用就自动执行链。
     chain = ToolChain(
         name="simple_demo",
         description="简单的工具链演示"

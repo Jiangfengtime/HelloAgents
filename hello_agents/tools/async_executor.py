@@ -1,3 +1,6 @@
+# 同步工具通过线程池放到事件循环之外执行；异步包装本身不保证多个协程已同时启动。
+# 当前快捷函数的 async with 与执行器的同步上下文接口不匹配；这里标注边界，不改变原行为。
+
 """异步工具执行器 - HelloAgents异步工具执行支持"""
 
 import asyncio
@@ -10,11 +13,13 @@ class AsyncToolExecutor:
     """异步工具执行器"""
 
     def __init__(self, registry: ToolRegistry, max_workers: int = 4):
+        # 学习提示：线程池在对象创建时准备，使用后需 close/shutdown；max_workers 是线程数上限。
         self.registry = registry
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
 
     async def execute_tool_async(self, tool_name: str, input_data: str) -> str:
         """异步执行单个工具"""
+        # 学习提示：通过 run_in_executor 调用同步注册表，避免工具函数直接占用事件循环线程。
         loop = asyncio.get_event_loop()
         
         def _execute():
@@ -37,6 +42,7 @@ class AsyncToolExecutor:
         Returns:
             执行结果列表，包含任务信息和结果
         """
+        # 学习提示：当前先保存协程对象再逐个 await，未 create_task/gather，因此此方法目前依次执行。
         print(f"🚀 开始并行执行 {len(tasks)} 个工具任务")
         
         # 创建异步任务
@@ -92,6 +98,7 @@ class AsyncToolExecutor:
         Returns:
             执行结果列表
         """
+        # 学习提示：把一个工具的多个输入转换为任务列表，结果和错误语义继承 execute_tools_parallel。
         tasks = [
             {"tool_name": tool_name, "input_data": input_data}
             for input_data in input_list
@@ -100,6 +107,7 @@ class AsyncToolExecutor:
 
     def close(self):
         """关闭执行器"""
+        # 学习提示：shutdown(wait=True) 等待线程完成；不会自动取消正在执行的工具动作。
         self.executor.shutdown(wait=True)
         print("🔒 异步工具执行器已关闭")
 
@@ -123,6 +131,7 @@ async def run_parallel_tools(registry: ToolRegistry, tasks: List[Dict[str, str]]
     Returns:
         执行结果列表
     """
+    # 学习提示：当前 async with 要求 __aenter__/__aexit__，但类只实现同步接口，调用会在执行任务前失败。
     async with AsyncToolExecutor(registry, max_workers) as executor:
         return await executor.execute_tools_parallel(tasks)
 
@@ -140,6 +149,7 @@ async def run_batch_tool(registry: ToolRegistry, tool_name: str, input_list: Lis
     Returns:
         执行结果列表
     """
+    # 学习提示：与并行快捷入口有相同上下文管理接口不匹配，不能因签名是 async 就认为已可运行。
     async with AsyncToolExecutor(registry, max_workers) as executor:
         return await executor.execute_tools_batch(tool_name, input_list)
 
@@ -147,11 +157,13 @@ async def run_batch_tool(registry: ToolRegistry, tool_name: str, input_list: Lis
 # 同步包装函数（为了兼容性）
 def run_parallel_tools_sync(registry: ToolRegistry, tasks: List[Dict[str, str]], max_workers: int = 4) -> List[Dict[str, Any]]:
     """同步版本的并行工具执行"""
+    # 学习提示：asyncio.run 适用于无运行中事件循环的同步入口，在已有异步循环内直接调用会失败。
     return asyncio.run(run_parallel_tools(registry, tasks, max_workers))
 
 
 def run_batch_tool_sync(registry: ToolRegistry, tool_name: str, input_list: List[str], max_workers: int = 4) -> List[Dict[str, Any]]:
     """同步版本的批量工具执行"""
+    # 学习提示：仅包装异步快捷函数，不修复其 async with 资源管理问题。
     return asyncio.run(run_batch_tool(registry, tool_name, input_list, max_workers))
 
 

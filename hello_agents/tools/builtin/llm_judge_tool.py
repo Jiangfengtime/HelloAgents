@@ -1,3 +1,6 @@
+# 读取生成题目和可选参考题目，调用 LLMJudgeEvaluator 让模型评审，再保存 JSON 与 Markdown。
+# 模型评分属于指定评委与提示下的判断，不是执行测试或官方数据集的客观正确率。
+
 """
 LLM Judge Evaluation Tool
 
@@ -25,6 +28,7 @@ class LLMJudgeTool(Tool):
         Args:
             llm: LLM实例，用于评估
         """
+        # 学习提示：可注入评委 LLM，未提供时由评估器选择/创建；构造此包装器不等于已评分。
         super().__init__(
             name="llm_judge_evaluation",
             description="使用LLM作为评委评估数据生成质量"
@@ -33,6 +37,7 @@ class LLMJudgeTool(Tool):
         
     def get_parameters(self) -> Dict[str, Any]:
         """获取工具参数定义"""
+        # 学习提示：当前返回 JSON Schema 字典而非 ToolParameter 列表，与通用基类及部分 Agent 适配契约不同。
         return {
             "type": "object",
             "properties": {
@@ -74,6 +79,7 @@ class LLMJudgeTool(Tool):
         Returns:
             评估结果的JSON字符串
         """
+        # 学习提示：读取本地生成数据和可选参考数据，再真实调用评委；输出目录会写 JSON 与 Markdown。
         # 解析参数
         generated_data_path = params["generated_data_path"]
         reference_data_path = params.get("reference_data_path")
@@ -148,6 +154,7 @@ class LLMJudgeTool(Tool):
     
     def _generate_report(self, results: Dict[str, Any], output_path: str):
         """生成Markdown评估报告"""
+        # 学习提示：将已有指标转为人类可读报告，不追加独立的事实核查或代码执行。
         metrics = results["metrics"]
         
         report = f"""# LLM Judge评估报告
@@ -212,6 +219,7 @@ class LLMJudgeTool(Tool):
     
     def _get_rating(self, score: float) -> str:
         """根据分数获取评级"""
+        # 学习提示：按分数阈值映射文字评级，评级不是另一个模型独立评审的结论。
         if score >= 4.5:
             return "优秀 ⭐⭐⭐⭐⭐"
         elif score >= 4.0:

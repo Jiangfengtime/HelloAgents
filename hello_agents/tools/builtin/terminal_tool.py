@@ -1,3 +1,6 @@
+# 执行路径：检查参数与首个命令名 → cd 特殊处理或 subprocess → 合并输出并格式化。
+# 当前首命令白名单、cwd 与 shell=True 不构成系统隔离；普通命令参数也未统一限制到 workspace 内。
+
 """TerminalTool - 命令行工具
 
 为Agent提供安全的命令行执行能力，支持：
@@ -92,6 +95,7 @@ class TerminalTool(Tool):
         allow_cd: bool = True,
         os_type: str = "auto"  # "auto", "windows", "linux", "mac"
     ):
+        # 学习提示：workspace/current_dir 是工作路径约定，不是操作系统级沙箱；构造时会创建目录。
         super().__init__(
             name="terminal",
             description="跨平台命令行工具 - 执行安全的文件系统、文本处理和代码执行命令（支持Windows/Linux/Mac）"
@@ -126,6 +130,7 @@ class TerminalTool(Tool):
     
     def run(self, parameters: Dict[str, Any]) -> str:
         """执行工具"""
+        # 学习提示：只验证第一个命令是否在白名单，随后传完整字符串执行，组合命令没有逐项校验。
         if not self.validate_parameters(parameters):
             return "❌ 参数验证失败"
         
@@ -172,6 +177,7 @@ class TerminalTool(Tool):
     
     def _handle_cd(self, parts: List[str]) -> str:
         """处理 cd 命令"""
+        # 学习提示：这条分支会 resolve 并检查目录边界；其他命令的文件参数不会因此自动受同样限制。
         if not self.allow_cd:
             return "❌ cd 命令已禁用"
         
@@ -210,6 +216,7 @@ class TerminalTool(Tool):
     
     def _execute_command(self, command: str) -> str:
         """执行命令"""
+        # 学习提示：shell=True 允许 shell 解析，继承进程环境；capture_output 先收完整输出，后截断无法限制采集时内存。
         try:
             # 根据操作系统类型调整命令执行方式
             if self.os_type == "windows":
@@ -258,10 +265,12 @@ class TerminalTool(Tool):
 
     def get_current_dir(self) -> str:
         """获取当前工作目录"""
+        # 学习提示：返回当前工具保存的路径，不查询另一个 shell 会话的工作目录。
         return str(self.current_dir)
 
     def reset_dir(self):
         """重置到工作目录根"""
+        # 学习提示：只把 current_dir 重置为 workspace，不撤销此前命令对文件或外部系统的修改。
         self.current_dir = self.workspace
 
     def get_os_type(self) -> str:

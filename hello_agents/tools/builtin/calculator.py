@@ -1,3 +1,6 @@
+# 计算器解析表达式 AST 并按允许的节点和运算映射递归计算，不把整个输入直接交给 eval。
+# 返回值为计算结果或错误文本；允许表达式仍可能消耗大量资源，未在此实现独立进程隔离。
+
 """计算器工具"""
 
 import ast
@@ -54,6 +57,7 @@ class CalculatorTool(Tool):
         Returns:
             计算结果
         """
+        # 学习提示：接受 input 或 expression；正常结果与失败都以字符串返回，上层需区分错误文本。
         # 支持两种参数格式：input 和 expression
         expression = parameters.get("input", "") or parameters.get("expression", "")
         if not expression:
@@ -75,6 +79,7 @@ class CalculatorTool(Tool):
     
     def _eval_node(self, node):
         """递归计算AST节点"""
+        # 学习提示：按 AST 节点递归分派，函数名仅从 FUNCTIONS 查找；OPERATORS 中的 ^ 是异或而不是乘方。
         if isinstance(node, ast.Constant):  # Python 3.8+
             return node.value
         elif isinstance(node, ast.Num):  # Python < 3.8
@@ -103,6 +108,7 @@ class CalculatorTool(Tool):
     
     def get_parameters(self):
         """获取工具参数定义"""
+        # 学习提示：公开的 schema 只声明 input，expression 是 run 内部兼容入口。
         from ..base import ToolParameter
         return [
             ToolParameter(
@@ -124,5 +130,6 @@ def calculate(expression: str) -> str:
     Returns:
         计算结果字符串
     """
+    # 学习提示：每次创建临时计算器并直接执行，不经过模型或注册表。
     tool = CalculatorTool()
     return tool.run({"input": expression})

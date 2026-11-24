@@ -1,3 +1,6 @@
+# 将生成数据和参考数据交给 WinRateEvaluator 做成对评审，保存胜率指标和报告。
+# 胜率依赖对比样本、评委模型与配对策略，不代表生成内容在所有任务上的绝对质量。
+
 """
 Win Rate Evaluation Tool
 
@@ -25,6 +28,7 @@ class WinRateTool(Tool):
         Args:
             llm: LLM实例，用于评估
         """
+        # 学习提示：保存可选评委模型引用；具体配对和判胜在评估器中实现。
         super().__init__(
             name="win_rate_evaluation",
             description="通过成对对比计算生成数据相对于真题的胜率"
@@ -33,6 +37,7 @@ class WinRateTool(Tool):
         
     def get_parameters(self) -> Dict[str, Any]:
         """获取工具参数定义"""
+        # 学习提示：返回字典 schema 而非参数对象列表，通用 Tool/Agent 调用前需确认是否适配。
         return {
             "type": "object",
             "properties": {
@@ -74,6 +79,7 @@ class WinRateTool(Tool):
         Returns:
             评估结果的JSON字符串
         """
+        # 学习提示：必须有本地参考文件或参考年份；读取后进行成对评审并写结果与报告。
         # 解析参数
         generated_data_path = params["generated_data_path"]
         reference_data_path = params.get("reference_data_path")
@@ -146,6 +152,7 @@ class WinRateTool(Tool):
     
     def _generate_report(self, results: Dict[str, Any], output_path: str):
         """生成Markdown评估报告"""
+        # 学习提示：用已计算胜率生成解释，不会增加新的对比样本或改善统计置信度。
         metrics = results["metrics"]
         
         report = f"""# Win Rate评估报告
@@ -208,6 +215,7 @@ class WinRateTool(Tool):
     
     def _get_win_rate_analysis(self, win_rate: float) -> str:
         """根据胜率生成分析"""
+        # 学习提示：阈值判断生成描述文本，不能替代样本量和评委偏差分析。
         if win_rate >= 0.55:
             return """
 ✅ **优秀**: 生成数据质量超过参考数据！这表明数据生成系统表现出色。
@@ -227,6 +235,7 @@ class WinRateTool(Tool):
     
     def _get_conclusion(self, win_rate: float) -> str:
         """根据胜率生成结论"""
+        # 学习提示：结论取决于已有胜率；换参考集或对比策略后不可直接比较该标签。
         if win_rate >= 0.45:
             return f"""基于Win Rate评估，生成数据集的质量**接近或达到AIME真题水平**（Win Rate = {win_rate:.2%}）。
 
