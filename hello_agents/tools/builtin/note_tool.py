@@ -82,7 +82,6 @@ class NoteTool(Tool):
         max_notes: int = 1000,
         expandable: bool = False
     ):
-        # 学习提示：创建本地目录并读取索引；笔记文件和索引都持久化，和 Agent._history 分属不同状态。
         super().__init__(
             name="note",
             description="笔记工具 - 创建、读取、更新、删除结构化笔记，支持任务状态、结论、阻塞项等类型",
@@ -97,12 +96,12 @@ class NoteTool(Tool):
         self.workspace.mkdir(parents=True, exist_ok=True)
         
         # 笔记索引文件
+        # JSON 索引记录笔记 ID/类型等摘要；正文另存为每条笔记自己的 .md 文件。
         self.index_file = self.workspace / "notes_index.json"
         self._load_index()
     
     def _load_index(self):
         """加载笔记索引"""
-        # 学习提示：恢复 JSON 索引或创建初始结构；索引加载不等于逐个校验 Markdown 文件仍然存在。
         if self.index_file.exists():
             with open(self.index_file, 'r', encoding='utf-8') as f:
                 self.notes_index = json.load(f)
@@ -118,25 +117,22 @@ class NoteTool(Tool):
     
     def _save_index(self):
         """保存笔记索引"""
-        # 学习提示：直接重写索引文件；当前没有与正文写入组成事务，也未在此实现并发写锁。
         with open(self.index_file, 'w', encoding='utf-8') as f:
             json.dump(self.notes_index, f, ensure_ascii=False, indent=2)
     
     def _generate_note_id(self) -> str:
         """生成笔记ID"""
-        # 学习提示：生成用于文件名和索引关联的 ID，不是向量检索标识。
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         count = len(self.notes_index["notes"])
         return f"note_{timestamp}_{count}"
     
     def _get_note_path(self, note_id: str) -> Path:
         """获取笔记文件路径"""
-        # 学习提示：当前直接拼接 note_id，未 resolve 后校验目录边界；包含 ../ 或绝对路径可能越界。
+        # 将 ID 拼成文件名；当前没有校验 ../ 或绝对路径，因此不能把此拼接当成目录隔离。
         return self.workspace / f"{note_id}.md"
     
     def _note_to_markdown(self, note: Dict[str, Any]) -> str:
         """将笔记对象转换为Markdown格式"""
-        # 学习提示：把结构化字段与正文组织成 Markdown，供文件保存；不是模型生成笔记内容。
         # YAML前置元数据
         frontmatter = "---\n"
         frontmatter += f"id: {note['id']}\n"
@@ -157,7 +153,6 @@ class NoteTool(Tool):
     
     def _markdown_to_note(self, markdown_text: str) -> Dict[str, Any]:
         """将Markdown文本解析为笔记对象"""
-        # 学习提示：按约定格式解析已有文件，外部任意 Markdown 不一定满足该结构。
         # 提取YAML前置元数据
         frontmatter_match = re.match(r'^---\s*\n(.*?)\n---\s*\n', markdown_text, re.DOTALL)
         
@@ -203,10 +198,10 @@ class NoteTool(Tool):
     
     def run(self, parameters: Dict[str, Any]) -> str:
         """执行工具（非展开模式）"""
-        # 学习提示：按 action 分发具体读写方法；模型提供的路径/ID/正文仍需按真实操作范围理解。
         if not self.validate_parameters(parameters):
             return "❌ 参数验证失败"
 
+        # 按 action 选择创建、读取、更新、删除等函数，真正文件操作发生在这些分支调用中。
         action = parameters.get("action")
 
         # 根据action调用对应的方法，传入提取的参数
@@ -318,7 +313,6 @@ class NoteTool(Tool):
         Returns:
             创建结果
         """
-        # 学习提示：先生成记录并写正文，再更新索引；任何中途异常都可能导致文件与索引不一致。
         if not title or not content:
             return "❌ 创建笔记需要提供 title 和 content"
         
@@ -327,6 +321,7 @@ class NoteTool(Tool):
             return f"❌ 笔记数量已达上限 ({self.max_notes})"
         
         # 生成笔记ID
+        # 为这条笔记分配 ID，同时作为正文文件名和索引关联键。
         note_id = self._generate_note_id()
         
         # 创建笔记对象
@@ -373,7 +368,6 @@ class NoteTool(Tool):
         Returns:
             笔记内容
         """
-        # 学习提示：从实际路径读取并格式化内容；没有先要求 note_id 必须出现在索引中。
         if not note_id:
             return "❌ 读取笔记需要提供 note_id"
         
@@ -381,6 +375,7 @@ class NoteTool(Tool):
         if not note_path.exists():
             return f"❌ 笔记不存在: {note_id}"
         
+        # 读取本地完整正文，再按本工具约定格式恢复结构化字段。
         with open(note_path, 'r', encoding='utf-8') as f:
             markdown_text = f.read()
         
@@ -402,7 +397,6 @@ class NoteTool(Tool):
         Returns:
             更新结果
         """
-        # 学习提示：非 None 字段覆盖已有记录，可能同时更新正文、备份和索引，不只是修改内存对象。
         if not note_id:
             return "❌ 更新笔记需要提供 note_id"
         
@@ -454,7 +448,6 @@ class NoteTool(Tool):
         Returns:
             删除结果
         """
-        # 学习提示：unlink 删除实际文件；当前只检查路径存在，未额外验证 note_id 所有权与目录边界。
         if not note_id:
             return "❌ 删除笔记需要提供 note_id"
         
@@ -463,6 +456,7 @@ class NoteTool(Tool):
             return f"❌ 笔记不存在: {note_id}"
         
         # 删除文件
+        # 删除实际文件，随后更新索引；两步之间出错可能造成索引和正文不同步。
         note_path.unlink()
         
         # 更新索引
@@ -485,7 +479,6 @@ class NoteTool(Tool):
         Returns:
             笔记列表
         """
-        # 学习提示：主要按索引筛选类型并限制条数；列表结果受索引是否及时更新影响。
         # 过滤笔记
         filtered_notes = self.notes_index["notes"]
         if note_type:
@@ -518,10 +511,10 @@ class NoteTool(Tool):
         Returns:
             搜索结果
         """
-        # 学习提示：读取索引对应文件，按标题/正文/标签做不区分大小写的子串匹配，不使用语义向量。
         if not query:
             return "❌ 搜索需要提供 query"
 
+        # 统一转小写后做子串匹配，方便英文大小写兼容；这里没有计算语义向量。
         query_lower = query.lower()
         
         # 搜索匹配的笔记
@@ -545,6 +538,7 @@ class NoteTool(Tool):
                     matched_notes.append(note)
         
         # 限制数量
+        # 按遍历得到的匹配顺序截断，不是按相关性分数重排。
         matched_notes = matched_notes[:limit]
         
         if not matched_notes:
@@ -563,7 +557,6 @@ class NoteTool(Tool):
         Returns:
             摘要信息
         """
-        # 学习提示：按当前笔记索引生成统计摘要，不调用大模型总结全部正文。
         total = len(self.notes_index["notes"])
         
         # 按类型统计
@@ -582,7 +575,7 @@ class NoteTool(Tool):
     
     def _format_note(self, note: Dict[str, Any], compact: bool = False) -> str:
         """格式化笔记输出"""
-        # 学习提示：compact 控制展示长度，不改变磁盘中的完整内容。
+        # 列表/搜索使用简短预览，详情模式展示完整正文；只改变返回文本，不修改文件。
         if compact:
             return (
                 f"[{note['type']}] {note['title']}\n"

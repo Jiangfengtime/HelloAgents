@@ -123,6 +123,7 @@ class PerceptualMemory(BaseMemory):
         base_collection = os.getenv("QDRANT_COLLECTION", "hello_agents_vectors")
         distance = os.getenv("QDRANT_DISTANCE", "cosine")
         
+        # 以 text/image/audio 为键保存各自的向量集合，避免不同编码器维度互相冲突。
         self.vector_stores: Dict[str, QdrantVectorStore] = {}
         # 文本集合
         self.vector_stores["text"] = QdrantConnectionManager.get_instance(
@@ -156,11 +157,13 @@ class PerceptualMemory(BaseMemory):
         """添加感知记忆（SQLite权威 + Qdrant向量）"""
         modality = memory_item.metadata.get("modality", "text")
         # content 可存人类可读描述；raw_data 存实际输入（如文件路径），两者不是同一概念。
+        # 原始数据可以是文件路径/字节等；没有提供时才使用文字描述 content。
         raw_data = memory_item.metadata.get("raw_data", memory_item.content)
         if modality not in self.supported_modalities:
             raise ValueError(f"不支持的模态类型: {modality}")
 
         # 编码感知数据
+        # 按 modality 选择编码器，把实际输入转成检索表示；不是生成对该内容的自然语言回答。
         perception = self._encode_perception(raw_data, modality, memory_item.id)
 
         # 缓存与索引
@@ -215,7 +218,6 @@ class PerceptualMemory(BaseMemory):
     
     def retrieve(self, query: str, limit: int = 5, **kwargs) -> List[MemoryItem]:
         """检索感知记忆（可筛模态；同模态向量检索+时间/重要性融合）"""
-        # 学习提示：按模态编码查询、向量召回，再从 SQLite 读取正文；无结果时还存在缓存关键词回退。
         user_id = kwargs.get("user_id")
         target_modality = kwargs.get("target_modality")  # 可选：限制目标模态
         query_modality = kwargs.get("query_modality", target_modality or "text")
@@ -441,7 +443,6 @@ class PerceptualMemory(BaseMemory):
 
     def get_all(self) -> List[MemoryItem]:
         """获取所有感知记忆"""
-        # 学习提示：返回内存缓存，不在此处执行 SQLite 全量恢复或 Qdrant 全量扫描。
         return self.perceptual_memories.copy()
     
     def get_stats(self) -> Dict[str, Any]:
@@ -557,6 +558,7 @@ class PerceptualMemory(BaseMemory):
         # 补零/截断只是对齐尺寸，不会把不同模型的向量空间变成兼容的语义空间。
         target_dim = self._get_dim_for_modality(modality)
         encoder = self.encoders.get(modality, self._default_encoder)
+        # 这里真正运行文本/图片/音频编码；后续补零或截断只是统一数组尺寸。
         vec = encoder(data)
         if not isinstance(vec, list):
             vec = list(vec)
@@ -590,7 +592,6 @@ class PerceptualMemory(BaseMemory):
 
     def _image_encoder(self, image_data: Any) -> List[float]:
         """图像编码器（优先CLIP，不可用则哈希）"""
-        # 学习提示：优先用可用图像模型产生表示；降级向量不能当作已验证的图像语义理解。
         if self._clip_model is None or self._clip_processor is None:
             return self._image_encoder_hash(image_data)
         try:
@@ -628,7 +629,6 @@ class PerceptualMemory(BaseMemory):
 
     def _audio_encoder(self, audio_data: Any) -> List[float]:
         """音频编码器（优先CLAP，不可用则哈希）"""
-        # 学习提示：编码依赖音频模型与读取能力；返回向量不代表完成了语音转文字。
         if self._clap_model is None or self._clap_processor is None:
             return self._audio_encoder_hash(audio_data)
         try:
@@ -660,7 +660,6 @@ class PerceptualMemory(BaseMemory):
 
     def _default_encoder(self, data: Any) -> List[float]:
         """默认编码器（退化为文本嵌入或哈希）"""
-        # 学习提示：用于缺少专用编码器的兜底表示，不等于为任意模态提供了理解模型。
         try:
             return self._text_encoder(str(data))
         except Exception:
@@ -688,6 +687,7 @@ class PerceptualMemory(BaseMemory):
 
     def _hash_to_vector(self, data_str: str, dim: int) -> List[float]:
         """将字符串哈希为固定维度的[0,1]向量（确定性）"""
+        # 用内容哈希产生稳定随机种子，相同内容可复现同一向量；此降级不保留真正语义。
         seed = int(hashlib.sha256(data_str.encode("utf-8", errors="ignore")).hexdigest(), 16) % (2**32)
         rng = random.Random(seed)
         return [rng.random() for _ in range(dim)]

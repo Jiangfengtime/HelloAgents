@@ -46,8 +46,8 @@ class QdrantConnectionManager:
         **kwargs
     ) -> 'QdrantVectorStore':
         """获取或创建Qdrant实例（单例模式）"""
-        # 学习提示：缓存键仅含 URL 和集合名，不含密钥、维度或距离；复用时不会按新参数重建已有对象。
         # 创建唯一键
+        # 复用键只包含地址和集合，密钥/维度不在键里；已创建后传入新配置不会重建。
         key = (url or "local", collection_name)
         
         if key not in cls._instances:
@@ -134,7 +134,6 @@ class QdrantVectorStore:
         
     def _initialize_client(self):
         """初始化Qdrant客户端和集合"""
-        # 学习提示：未传 URL 时连接 localhost:6333 的服务，不是自动启动数据库，也不是内存数据库。
         try:
             # 根据配置创建客户端连接
             if self.url and self.api_key:
@@ -155,6 +154,7 @@ class QdrantVectorStore:
             else:
                 # 使用本地服务（默认）
                 self.client = QdrantClient(
+                    # 不提供URL时连接本机6333端口，程序不会自动启动Qdrant服务。
                     host="localhost",
                     port=6333,
                     timeout=self.timeout
@@ -178,7 +178,6 @@ class QdrantVectorStore:
     
     def _ensure_collection(self):
         """确保集合存在，不存在则创建"""
-        # 学习提示：不存在就创建；已有集合会复用并尝试更新 HNSW，不能据此认定已迁移向量维度。
         try:
             # 检查集合是否存在
             collections = self.client.get_collections().collections
@@ -219,7 +218,6 @@ class QdrantVectorStore:
 
     def _ensure_payload_indexes(self):
         """为常用过滤字段创建payload索引"""
-        # 学习提示：payload 索引加速 user_id/type/namespace 等过滤，不会改变向量语义，也不提供用户鉴权。
         try:
             index_fields = [
                 ("memory_type", models.PayloadSchemaType.KEYWORD),
@@ -265,7 +263,6 @@ class QdrantVectorStore:
         Returns:
             bool: 是否成功
         """
-        # 学习提示：vectors、metadata、ids 应按索引一一对应；当前 zip 按最短长度结束，数量不一致可能丢项。
         try:
             if not vectors:
                 logger.warning("⚠️ 向量列表为空")
@@ -279,6 +276,7 @@ class QdrantVectorStore:
             # 构建点数据
             logger.info(f"[Qdrant] add_vectors start: n_vectors={len(vectors)} n_meta={len(metadata)} collection={self.collection_name}")
             points = []
+            # 三组列表按位置配对；zip会在最短列表结束，数量不一致可能静默丢项。
             for i, (vector, meta, point_id) in enumerate(zip(vectors, metadata, ids)):
                 # 确保向量是正确的维度
                 try:
@@ -307,6 +305,7 @@ class QdrantVectorStore:
                         uuid.UUID(point_id)
                         safe_id = point_id
                     except Exception:
+                        # 不能解析为UUID的字符串改成随机主键，原业务ID仍需保存在payload中用于关联。
                         safe_id = str(uuid.uuid4())
                 else:
                     safe_id = str(uuid.uuid4())
@@ -357,7 +356,6 @@ class QdrantVectorStore:
         Returns:
             List[Dict]: 搜索结果
         """
-        # 学习提示：先检查维度，再把标量 where 条件组合为 AND 过滤；不支持的复杂条件不会自动变成范围查询。
         try:
             if len(query_vector) != self.vector_size:
                 logger.error(f"❌ 查询向量维度错误: 期望{self.vector_size}, 实际{len(query_vector)}")
@@ -377,6 +375,7 @@ class QdrantVectorStore:
                         )
                 
                 if conditions:
+                    # must 组合表示所有条件同时满足，如用户、记忆类型和命名空间。
                     query_filter = Filter(must=conditions)
             
             # 执行搜索
@@ -391,6 +390,7 @@ class QdrantVectorStore:
             # 1.16.0+ 使用 query_points(), <1.16.0 使用 search()
             try:
                 # 尝试新API (qdrant-client >= 1.16.0)
+                # 先尝试新客户端方法；只有 AttributeError 才切回后面的旧 search 方法。
                 response = self.client.query_points(
                     collection_name=self.collection_name,
                     query=query_vector,
@@ -442,7 +442,6 @@ class QdrantVectorStore:
         Returns:
             bool: 是否成功
         """
-        # 学习提示：这里按 Qdrant 点主键删除；若业务 ID 曾被映射，应使用对应主键或按 payload 删除接口。
         try:
             if not ids:
                 return True
@@ -469,9 +468,9 @@ class QdrantVectorStore:
         Returns:
             bool: 是否成功
         """
-        # 学习提示：直接删掉整个集合再创建，不包含用户/namespace 过滤；共享集合中的所有数据都会受影响。
         try:
             # 删除并重新创建集合
+            # 删除整个集合而非某用户/命名空间的点，随后重新建集合也无法恢复已删资料。
             self.client.delete_collection(collection_name=self.collection_name)
             self._ensure_collection()
             
@@ -489,7 +488,6 @@ class QdrantVectorStore:
         注意：由于写入时可能将非UUID的点ID转换为UUID，这里不再依赖点ID，
         而是通过payload中的memory_id来匹配删除，确保一致性。
         """
-        # 学习提示：使用 payload.memory_id 匹配记录，解决业务 ID 与点主键不一致的删除定位问题。
         try:
             if not memory_ids:
                 return
@@ -498,6 +496,7 @@ class QdrantVectorStore:
                 FieldCondition(key="memory_id", match=MatchValue(value=mid))
                 for mid in memory_ids
             ]
+            # should 表示业务ID匹配任意一个即可，按payload删除不依赖实际点主键。
             query_filter = Filter(should=conditions)
             self.client.delete(
                 collection_name=self.collection_name,
@@ -554,7 +553,6 @@ class QdrantVectorStore:
         Returns:
             bool: 服务是否健康
         """
-        # 学习提示：轻量检查连接是否响应，不验证召回正确性、向量模型一致性或全部读写权限。
         try:
             # 尝试获取集合列表
             collections = self.client.get_collections()

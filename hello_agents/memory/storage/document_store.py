@@ -90,7 +90,7 @@ class SQLiteDocumentStore(DocumentStore):
     
     def __new__(cls, db_path: str = "./memory.db"):
         """单例模式，同一路径只创建一个实例"""
-        # 学习提示：按绝对路径复用对象；这是进程内实例缓存，不是跨进程数据库锁。
+        # 将相对路径标准化为实例缓存键，同一个数据库文件尽量复用一个存储对象。
         abs_path = os.path.abspath(db_path)
         if abs_path not in cls._instances:
             instance = super(SQLiteDocumentStore, cls).__new__(cls)
@@ -119,15 +119,14 @@ class SQLiteDocumentStore(DocumentStore):
     
     def _get_connection(self):
         """获取线程本地连接"""
-        # 学习提示：threading.local 为每个线程创建独立连接；同一存储对象可在不同线程持有不同 connection。
         if not hasattr(self.local, 'connection'):
+            # 每个线程独立创建连接，避免跨线程使用同一个 SQLite connection。
             self.local.connection = sqlite3.connect(self.db_path)
             self.local.connection.row_factory = sqlite3.Row  # 使结果可以按列名访问
         return self.local.connection
     
     def _init_database(self):
         """初始化数据库表"""
-        # 学习提示：IF NOT EXISTS 适合首次建表，但不是字段迁移系统；修改已有表结构需另行迁移。
         conn = self._get_connection()
         cursor = conn.cursor()
         
@@ -223,7 +222,6 @@ class SQLiteDocumentStore(DocumentStore):
         properties: Dict[str, Any] = None
     ) -> str:
         """添加记忆"""
-        # 学习提示：INSERT OR REPLACE 以记录 ID 为键写入；properties 序列化为 JSON 文本后提交本次事务。
         conn = self._get_connection()
         cursor = conn.cursor()
         
@@ -242,6 +240,7 @@ class SQLiteDocumentStore(DocumentStore):
             memory_type,
             timestamp,
             importance,
+            # 把扩展属性字典编码为JSON文本存入SQL列；读出时再 json.loads 恢复。
             json.dumps(properties) if properties else None
         ))
         
@@ -250,7 +249,6 @@ class SQLiteDocumentStore(DocumentStore):
     
     def get_memory(self, memory_id: str) -> Optional[Dict[str, Any]]:
         """获取单个记忆"""
-        # 学习提示：按 ID 读取并将 properties JSON 还原成字典；本入口没有额外用户过滤。
         conn = self._get_connection()
         cursor = conn.cursor()
         
@@ -285,7 +283,6 @@ class SQLiteDocumentStore(DocumentStore):
         limit: int = 10
     ) -> List[Dict[str, Any]]:
         """搜索记忆"""
-        # 学习提示：值通过占位参数绑定；条件片段由程序拼接，默认按重要性、时间排序而非语义相似度。
         conn = self._get_connection()
         cursor = conn.cursor()
         
@@ -316,6 +313,7 @@ class SQLiteDocumentStore(DocumentStore):
         
         where_clause = ""
         if where_conditions:
+            # 用 AND 连接各可选条件；值放 params 参数列表，不直接拼到 SQL 文本里。
             where_clause = "WHERE " + " AND ".join(where_conditions)
         
         cursor.execute(f"""
@@ -328,6 +326,7 @@ class SQLiteDocumentStore(DocumentStore):
         
         memories = []
         for row in cursor.fetchall():
+            # 将 SQL 行转换成框架统一字段；SQL 的 id 列在返回结构中命名 memory_id。
             memories.append({
                 "memory_id": row["id"],
                 "user_id": row["user_id"],
@@ -349,7 +348,6 @@ class SQLiteDocumentStore(DocumentStore):
         properties: Dict[str, Any] = None
     ) -> bool:
         """更新记忆"""
-        # 学习提示：动态组装需要改动的列，只有非 None 参数会覆盖旧值；此层不自动重建向量。
         conn = self._get_connection()
         cursor = conn.cursor()
         
@@ -357,6 +355,7 @@ class SQLiteDocumentStore(DocumentStore):
         update_fields = []
         params = []
         
+        # None 表示不改旧值，空字符串则表示明确把正文更新为空。
         if content is not None:
             update_fields.append("content = ?")
             params.append(content)
@@ -386,7 +385,6 @@ class SQLiteDocumentStore(DocumentStore):
     
     def delete_memory(self, memory_id: str) -> bool:
         """删除记忆"""
-        # 学习提示：仅删除本地 SQL 记录；关联向量或图节点需要上层类型另行清理。
         conn = self._get_connection()
         cursor = conn.cursor()
         
@@ -462,7 +460,6 @@ class SQLiteDocumentStore(DocumentStore):
 
     def close(self):
         """关闭数据库连接"""
-        # 学习提示：只关闭当前线程的连接；其他线程的连接以及类级实例缓存不会因此一起清空。
         if hasattr(self.local, 'connection'):
             self.local.connection.close()
             delattr(self.local, 'connection')

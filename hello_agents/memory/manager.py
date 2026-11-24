@@ -36,7 +36,6 @@ class MemoryManager:
         enable_semantic: bool = True,
         enable_perceptual: bool = False
     ):
-        # 学习提示：enable_* 决定实际构造哪些类型；只学习本地路径时可关闭 episodic/semantic/perceptual。
         self.config = config or MemoryConfig()
         # 一个管理器绑定一个用户；新增记录与检索条件都使用这个标识。
         self.user_id = user_id
@@ -45,6 +44,7 @@ class MemoryManager:
         
         # 初始化各类型记忆
         # 启用某类型即调用其构造函数；长期记忆后端可能在初始化阶段连接外部数据库。
+        # 按类型名保存实例；例如 memory_types["working"] 指向本次构造的 WorkingMemory。
         self.memory_types = {}
         
         if enable_working:
@@ -81,19 +81,21 @@ class MemoryManager:
         Returns:
             记忆ID
         """
-        # 学习提示：auto_classify=True 可覆盖传入类型；要严格写入指定类型时显式关闭自动分类。
         # 自动分类记忆类型
         # auto_classify=True 时可能覆盖调用方传入的 memory_type。
+        # 开启时按 metadata/关键词重新选类型；要严格使用 memory_type，需显式传 False。
         if auto_classify:
             memory_type = self._classify_memory_type(content, metadata)
         
         # 计算重要性
+        # 未提供分数才运行规则评分；显式传入的 0.0 也会保留。
         if importance is None:
             importance = self._calculate_importance(content, metadata)
         
         # 创建记忆项
         # 统一封装数据再分派：管理器不直接写 SQL，也不直接生成检索向量。
         memory_item = MemoryItem(
+            # 为正文、向量和图关联生成同一个业务主键，更新/删除时使用完整 ID。
             id=str(uuid.uuid4()),
             content=content,
             memory_type=memory_type,
@@ -105,6 +107,7 @@ class MemoryManager:
         
         # 添加到对应的记忆类型
         if memory_type in self.memory_types:
+            # 按类型分派实际写入；管理器本身不直接执行 SQL 或生成嵌入。
             memory_id = self.memory_types[memory_type].add(memory_item)
             logger.debug(f"添加记忆到 {memory_type}: {memory_id}")
             return memory_id
@@ -131,18 +134,19 @@ class MemoryManager:
         Returns:
             检索到的记忆列表
         """
-        # 学习提示：limit 是最终上限而非保证数量；每类先取固定配额，没有命中的配额不会自动补给其他类型。
         # time_range 虽在签名中声明，当前实现没有将它应用到过滤或传给后端。
         if memory_types is None:
+            # 未限定类型时，查询当前管理器实际启用的所有类型；不是固定查询四类。
             memory_types = list(self.memory_types.keys())
         
         # 从各个记忆类型中检索
         all_results = []
-        # 先为各类型分配候选数量，再合并截断；memory_types 为空会导致除零。
+        # 整数除法先给各类型分配候选数量，至少为1；空列表会在 len(...) 为0时除零。
         per_type_limit = max(1, limit // len(memory_types))
 
         for memory_type in memory_types:
             if memory_type in self.memory_types:
+                # 取到具体类型对象，再调用它自己的检索算法。
                 memory_instance = self.memory_types[memory_type]
                 try:
                     # 使用各个记忆类型自己的检索方法
@@ -154,15 +158,17 @@ class MemoryManager:
                         min_importance=min_importance,
                         user_id=self.user_id
                     )
+                    # 把本类型的 MemoryItem 列表逐项加入总候选列表，不是把列表嵌套成一个元素。
                     all_results.extend(type_results)
                 except Exception as e:
                     # 某类失败后继续查询其他类型；返回空结果不一定意味着数据库里没有数据。
                     logger.warning(f"检索 {memory_type} 记忆时出错: {e}")
                     continue
 
-        # 按重要性和相关性排序
-        # 当前跨类型汇总仅按 importance 排序，相关性由各类型检索实现决定。
+        # 各类型内部先按相关性选候选，跨类型合并时只按 importance 重新排序。
+        # lambda 为每条记录取 importance 作为排序键，reverse=True 表示重要的排前面。
         all_results.sort(key=lambda x: x.importance, reverse=True)
+        # 切片限定最终条数；各类型候选不足时不会自动补齐到 limit。
         return all_results[:limit]
     
     def update_memory(
@@ -186,6 +192,7 @@ class MemoryManager:
         # 查找记忆所在的类型
         # 此处按 ID 查找，不再检查 user_id；对外暴露更新接口时需额外验证记录归属。
         for memory_type, memory_instance in self.memory_types.items():
+            # 逐个类型按 ID 查找，首次命中就更新；没有在这里额外校验记录所属用户。
             if memory_instance.has_memory(memory_id):
                 return memory_instance.update(memory_id, content, importance, metadata)
         
@@ -201,7 +208,6 @@ class MemoryManager:
         Returns:
             是否删除成功
         """
-        # 学习提示：通过 ID 在已启用类型中查找，首次命中就返回；这里未增加 user_id 所有权校验。
         for memory_type, memory_instance in self.memory_types.items():
             if memory_instance.has_memory(memory_id):
                 return memory_instance.remove(memory_id)
@@ -263,6 +269,7 @@ class MemoryManager:
         # 获取需要整合的记忆
         # 整合是迁移现有记录，不调用模型做摘要；get_all 的范围由源类型实现决定。
         all_memories = source_memory.get_all()
+        # 从源类型记录中筛出达到阈值的项，不调用模型做归纳总结。
         candidates = [
             m for m in all_memories
             if m.importance >= importance_threshold
@@ -276,6 +283,7 @@ class MemoryManager:
                 memory.memory_type = to_type
                 # 原地提高重要性，当前没有再次限制到 1.0，也不是模型评估的新分数。
                 memory.importance *= 1.1  # 提升重要性
+                # 此时源记录已移除；目标写入失败时当前没有回滚，所以不是跨后端原子迁移。
                 target_memory.add(memory)
                 consolidated_count += 1
 
@@ -284,7 +292,6 @@ class MemoryManager:
 
     def get_memory_stats(self) -> Dict[str, Any]:
         """获取记忆统计信息"""
-        # 学习提示：统计由各类型自行提供；内存缓存数量和数据库总数可能采用不同口径。
         stats = {
             "user_id": self.user_id,
             "enabled_types": list(self.memory_types.keys()),
@@ -307,7 +314,6 @@ class MemoryManager:
 
     def clear_all_memories(self):
         """清空所有记忆"""
-        # 学习提示：逐类型调用 clear，不是一个统一事务，也不会只因 manager 绑定了用户就自动缩小删除范围。
         for memory_type, memory_instance in self.memory_types.items():
             memory_instance.clear()
         logger.info("所有记忆已清空")
@@ -322,6 +328,7 @@ class MemoryManager:
             return metadata["type"]
         
         # 简单的分类逻辑，可以扩展为更复杂的分类器
+        # 规则判断按顺序执行；同时包含事件与知识关键词时，事件类型优先。
         if self._is_episodic_content(content):
             return "episodic"
         elif self._is_semantic_content(content):

@@ -47,12 +47,13 @@ def register_service(
            metadata={"version": "1.0"}
        )
     """
-    # 学习提示：已有 ServiceInfo 直接登记；否则校验三个必填值并构造对象，两条路径最后都写入 discovery 字典。
+    # 已有ServiceInfo就直接登记；否则下方用各参数构造对象，两条路最后都写内存表。
     if service is not None:
         # 方式1：直接传入 ServiceInfo 对象
         return discovery.register_service(service)
     else:
         # 方式2：从参数构造 ServiceInfo 对象
+        # 只校验三个必填值非空，不验证端点是否存在或是否可连接。
         if not all([service_id, service_type, endpoint]):
             raise ValueError("必须提供 service_id, service_type 和 endpoint 参数")
 
@@ -68,7 +69,6 @@ def register_service(
 
 def discover_service(discovery: ANPDiscovery, service_type: str = None):
     """发现服务的便捷函数"""
-    # 学习提示：仅按 service_type 调用当前内存发现器，没有发出网络发现请求。
     return discovery.discover_services(service_type=service_type)
 
 __all__ = [

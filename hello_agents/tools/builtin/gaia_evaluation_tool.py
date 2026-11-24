@@ -33,7 +33,6 @@ class GAIAEvaluationTool(Tool):
         Args:
             local_data_path: 本地数据路径（可选）
         """
-        # 学习提示：保存数据路径和输出配置；真正样本加载与模型调用发生在评估入口。
         super().__init__(
             name="gaia_evaluation",
             description=(
@@ -48,7 +47,6 @@ class GAIAEvaluationTool(Tool):
     
     def get_parameters(self) -> List[ToolParameter]:
         """获取工具参数定义"""
-        # 学习提示：提供说明用参数列表；run 实际需要 agent 等独立实参，不能直接等同于普通 Tool.run(dict)。
         return [
             ToolParameter(
                 name="agent",
@@ -101,7 +99,6 @@ class GAIAEvaluationTool(Tool):
         Returns:
             评估结果字典
         """
-        # 学习提示：可选导出和报告会写本地文件；agent 自身的模型、搜索和附件能力仍由调用方配置。
         print("\n" + "=" * 60)
         print("GAIA一键评估")
         print("=" * 60)
@@ -118,6 +115,7 @@ class GAIAEvaluationTool(Tool):
             print("步骤1: 运行HelloAgents评估")
             print("=" * 60)
 
+            # 用实际 Agent 处理数据集，再根据开关分别导出预测和报告。
             results = self._run_evaluation(agent, level, max_samples, local_data_dir)
 
             # 步骤2: 导出GAIA格式结果
@@ -164,12 +162,12 @@ class GAIAEvaluationTool(Tool):
         local_data_dir: Optional[str]
     ) -> Dict[str, Any]:
         """运行评估"""
-        # 学习提示：加载数据并构造评估器，再把同一 Agent 交给 evaluator；本方法不自动清除每个样本之间的历史。
         # 加载数据集
         self.dataset = GAIADataset(
             level=level,
             local_data_dir=local_data_dir or self.local_data_path
         )
+        # 加载样本以确认数据非空；下载/本地读取方式由 GAIADataset 负责。
         dataset_items = self.dataset.load()
 
         if not dataset_items:
@@ -189,7 +187,6 @@ class GAIAEvaluationTool(Tool):
 
     def _export_results(self, results: Dict[str, Any]) -> None:
         """导出GAIA格式结果和提交说明"""
-        # 学习提示：导出提交格式与使用说明，不会自动向官方站点提交。
         # 创建输出目录
         output_dir = Path("./evaluation_results/gaia_official")
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -224,7 +221,6 @@ class GAIAEvaluationTool(Tool):
             output_dir: 输出目录
             result_file: 结果文件路径
         """
-        # 学习提示：生成文字操作指引，不代表官方已接收或认可本次结果。
         agent_name = results.get("agent_name", "Unknown")
         level = results.get("level_filter")
         total_samples = results.get("total_samples", 0)
@@ -345,7 +341,6 @@ GAIA要求的JSONL格式（每行一个JSON对象）：
         Returns:
             Markdown格式的报告
         """
-        # 学习提示：读取已有指标与明细生成报告；其准确性受上游答案提取和计分实现影响。
         # 生成报告内容
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         agent_name = results.get("agent_name", "Unknown")
@@ -458,7 +453,6 @@ GAIA要求的JSONL格式（每行一个JSON对象）：
         Returns:
             数据集信息字典
         """
-        # 学习提示：获取样本规模等信息也可能触发数据加载，是否联网由 dataset 实现决定。
         try:
             dataset = GAIADataset(level=level, local_data_path=self.local_data_path)
             items = dataset.load()
@@ -487,12 +481,12 @@ GAIA要求的JSONL格式（每行一个JSON对象）：
         Returns:
             是否有效
         """
-        # 学习提示：仅检查 run 属性存在且可调用，不验证其参数签名、输出类型或任务能力。
         # 检查agent是否有run方法
         if not hasattr(agent, 'run'):
             return False
         
         # 检查run方法是否可调用
+        # 这里只验证方法可以被调用，没有验证签名、返回类型或真实答题能力。
         if not callable(getattr(agent, 'run')):
             return False
         

@@ -49,7 +49,6 @@ class RAGTool(Tool):
         rag_namespace: str = "default",
         expandable: bool = False
     ):
-        # 学习提示：保存集合和默认命名空间，准备本地目录后初始化管道；构造本身可能连接存储。
         super().__init__(
             name="rag",
             description="RAG工具 - 支持多格式文档检索增强生成，提供智能问答能力",
@@ -61,6 +60,7 @@ class RAGTool(Tool):
         self.qdrant_api_key = qdrant_api_key or os.getenv("QDRANT_API_KEY")
         self.collection_name = collection_name
         self.rag_namespace = rag_namespace
+        # 以 namespace 为键缓存管道；管道包含共享向量存储对象和查询/入库闭包。
         self._pipelines: Dict[str, Dict[str, Any]] = {}
         
         # 确保知识库目录存在
@@ -71,7 +71,6 @@ class RAGTool(Tool):
     
     def _init_components(self):
         """初始化RAG组件"""
-        # 学习提示：先建向量管道再建问答 LLM；只想检索时也需留意这里的模型配置要求。
         try:
             # 初始化默认命名空间的 RAG 管道
             default_pipeline = create_rag_pipeline(
@@ -96,7 +95,7 @@ class RAGTool(Tool):
 
     def _get_pipeline(self, namespace: Optional[str] = None) -> Dict[str, Any]:
         """获取指定命名空间的 RAG 管道，若不存在则自动创建"""
-        # 学习提示：每个 namespace 缓存一个管道字典，但当前都使用相同 collection_name，以过滤字段区分资料。
+        # 显式 namespace 优先，否则使用实例默认值；下面会按该值选择或创建管道。
         target_ns = namespace or self.rag_namespace
         if target_ns in self._pipelines:
             return self._pipelines[target_ns]
@@ -104,6 +103,7 @@ class RAGTool(Tool):
         pipeline = create_rag_pipeline(
             qdrant_url=self.qdrant_url,
             qdrant_api_key=self.qdrant_api_key,
+            # 不同命名空间仍使用同一个 collection，依靠 payload 过滤区分，不能把它当成物理独立数据库。
             collection_name=self.collection_name,
             rag_namespace=target_ns
         )
@@ -119,7 +119,6 @@ class RAGTool(Tool):
         Returns:
             执行结果字符串
         """
-        # 学习提示：统一动作入口；未传 namespace 的分支通常使用字面量 default，不一定是实例的 rag_namespace。
         if not self.validate_parameters(parameters):
             return "❌ 参数验证失败：缺少必需的参数"
 
@@ -127,6 +126,7 @@ class RAGTool(Tool):
             return f"❌ RAG工具未正确初始化，请检查配置: {getattr(self, 'init_error', '未知错误')}"
 
         # action 是工具分发入口；具体检索、入库或生成由下方对应分支执行。
+        # 区分 add/search/ask/clear 等入口；run 分支未传 namespace 时多用字面量 "default"。
         action = parameters.get("action")
 
         # 根据action调用对应的方法，传入提取的参数
@@ -261,7 +261,6 @@ class RAGTool(Tool):
         Returns:
             执行结果
         """
-        # 学习提示：从路径转换、分块并索引；已有文件路径不代表解析和入库一定成功。
         try:
             if not file_path or not os.path.exists(file_path):
                 return f"❌ 文件不存在: {file_path}"
@@ -312,7 +311,6 @@ class RAGTool(Tool):
         Returns:
             执行结果
         """
-        # 学习提示：把文本交给文件/分块索引路径处理，可能创建本地文件，并非仅保存字符串到内存。
         metadata = None
         try:
             if not text or not text.strip():
@@ -384,7 +382,6 @@ class RAGTool(Tool):
         Returns:
             搜索结果
         """
-        # 学习提示：生成可阅读检索片段，不调用本方法所属工具的问答 LLM；高级查询扩展可能额外调用模型。
         try:
             if not query or not query.strip():
                 return "❌ 搜索查询不能为空"
@@ -470,7 +467,6 @@ class RAGTool(Tool):
         4. LLM生成准确答案
         5. 添加引用来源
         """
-        # 学习提示：真实链路是检索→整理片段→构造提示→模型生成→附加来源；没有召回时直接返回提示。
         try:
             # 验证问题
             if not question or not question.strip():
@@ -483,6 +479,7 @@ class RAGTool(Tool):
             pipeline = self._get_pipeline(namespace)
             search_start = time.time()
             
+            # 高级分支可先调用模型生成多种查询及假想答案，再向量检索；基础分支只做原问题召回。
             if enable_advanced_search:
                 results = pipeline["search_advanced"](
                     query=user_question,
@@ -498,6 +495,7 @@ class RAGTool(Tool):
             
             search_time = int((time.time() - search_start) * 1000)
             
+            # 没有证据时提前返回，不继续让问答模型凭空补充资料。
             if not results:
                 return (
                     f"🤔 抱歉，我在知识库中没有找到与「{user_question}」相关的信息。\n\n"
@@ -512,6 +510,7 @@ class RAGTool(Tool):
             citations = []
             total_score = 0
             
+            # 每个命中提取正文、来源路径和相似度；这些字段用于模型上下文和最终引用。
             for i, result in enumerate(results):
                 meta = result.get("metadata", {})
                 content = meta.get("content", "").strip()
@@ -522,6 +521,7 @@ class RAGTool(Tool):
                 if content:
                     # 清理内容格式
                     cleaned_content = self._clean_content_for_context(content)
+                    # 为片段加序号，帮助模型区分不同证据；长正文此前已被字符截断。
                     context_parts.append(f"片段 {i+1}：{cleaned_content}")
                     
                     if include_citations:
@@ -548,6 +548,7 @@ class RAGTool(Tool):
             
             # 5. 调用 LLM 生成答案
             llm_start = time.time()
+            # 这里才把整理好的证据和问题发送给回答模型；之前的检索结果本身还不是最终答案。
             answer = self.llm.invoke(enhanced_prompt)
             llm_time = int((time.time() - llm_start) * 1000)
             
@@ -571,7 +572,6 @@ class RAGTool(Tool):
     
     def _clean_content_for_context(self, content: str) -> str:
         """清理内容用于上下文"""
-        # 学习提示：合并空白并按字符截取每条片段，过长原文的后半部分可能不会进入模型。
         # 移除过多的换行和空格
         content = " ".join(content.split())
         # 截断过长内容
@@ -581,7 +581,6 @@ class RAGTool(Tool):
     
     def _smart_truncate_context(self, context: str, max_chars: int) -> str:
         """智能截断上下文，保持段落完整性"""
-        # 学习提示：尽量在段落处截断，仍是字符预算，不是 tokenizer 计数或模型摘要。
         if len(context) <= max_chars:
             return context
         
@@ -596,7 +595,6 @@ class RAGTool(Tool):
     
     def _build_system_prompt(self) -> str:
         """构建系统提示词"""
-        # 学习提示：提供依据上下文回答的指令，不会在程序层证明模型遵守了引用或真实性要求。
         return (
             "你是一个专业的知识助手，具备以下能力：\n"
             "1. 📖 精准理解：仔细理解用户问题的核心意图\n"
@@ -613,7 +611,6 @@ class RAGTool(Tool):
     
     def _build_user_prompt(self, question: str, context: str) -> str:
         """构建用户提示词"""
-        # 学习提示：将问题和召回内容显式放入输入；外部文档文字应作为证据而不是新的系统权限。
         return (
             f"请基于以下上下文信息回答问题：\n\n"
             f"【问题】{question}\n\n"
@@ -623,7 +620,6 @@ class RAGTool(Tool):
     
     def _format_final_answer(self, question: str, answer: str, citations: Optional[List[Dict]] = None, search_time: int = 0, llm_time: int = 0, avg_score: float = 0) -> str:
         """格式化最终答案"""
-        # 学习提示：来源与相似度来自检索结果；展示引用不等于逐句核对模型结论。
         result = [f"🤖 **智能问答结果**\n"]
         result.append(answer)
         
@@ -649,8 +645,8 @@ class RAGTool(Tool):
         Returns:
             执行结果
         """
-        # 学习提示：当前会调用整集合清空，并非按 namespace 删除；非空字符串 false 也会通过真值确认判断。
         try:
+            # 当前仅判断真值，字符串 "false" 也会通过；应由调用方传真正布尔值。
             if not confirm:
                 return (
                     "⚠️ 危险操作：清空知识库将删除所有数据！\n"
@@ -660,6 +656,7 @@ class RAGTool(Tool):
             pipeline = self._get_pipeline(namespace)
             store = pipeline.get("store")
             namespace_id = pipeline.get("namespace", self.rag_namespace)
+            # 实际清空整个集合，不带 namespace 过滤；共享集合中的其他资料也会被影响。
             success = store.clear_collection() if store else False
             
             if success:
@@ -687,7 +684,6 @@ class RAGTool(Tool):
         Returns:
             统计信息
         """
-        # 学习提示：存储统计可能是整个集合的点数，不能仅因显示某个 namespace 就认定数据只属于该空间。
         try:
             pipeline = self._get_pipeline(namespace)
             stats = pipeline["get_stats"]()
@@ -741,7 +737,6 @@ class RAGTool(Tool):
         
         这个方法可以被Agent调用来获取相关的知识库上下文
         """
-        # 学习提示：返回拼接的正文供上层注入；未查询到为空字符串，异常则返回错误文本。
         try:
             if not query:
                 return ""
@@ -759,6 +754,7 @@ class RAGTool(Tool):
             # 合并上下文
             context_parts = []
             for result in results:
+                # 向量命中格式为 {score, metadata: {content, ...}}，正文位于 metadata.content。
                 content = result.get("metadata", {}).get("content", "")
                 if content:
                     context_parts.append(content)
@@ -776,7 +772,6 @@ class RAGTool(Tool):
     
     def batch_add_texts(self, texts: List[str], document_ids: Optional[List[str]] = None, chunk_size: int = 800, chunk_overlap: int = 100, namespace: Optional[str] = None) -> str:
         """批量添加文本"""
-        # 学习提示：批处理减少重复管道准备，仍会发生嵌入和向量写入，不是单个原子事务。
         try:
             if not texts:
                 return "❌ 文本列表不能为空"
@@ -833,7 +828,6 @@ class RAGTool(Tool):
     
     def clear_all_namespaces(self) -> str:
         """清空当前工具管理的所有命名空间数据"""
-        # 学习提示：对缓存管道依次清集合；多个空间若共享集合，会反复操作同一实际存储。
         try:
             for ns, pipeline in self._pipelines.items():
                 store = pipeline.get("store")
@@ -869,7 +863,6 @@ class RAGTool(Tool):
     
     def ask(self, question: str, namespace: str = "default", **kwargs) -> str:
         """便捷方法：智能问答"""
-        # 学习提示：便捷方法转交 _ask，不是单独的大模型客户端。
         params = {
             "action": "ask",
             "question": question,
@@ -880,7 +873,6 @@ class RAGTool(Tool):
     
     def search(self, query: str, namespace: str = "default", **kwargs) -> str:
         """便捷方法：搜索知识库"""
-        # 学习提示：便捷方法转交检索流程，返回的是格式化文本而不是底层向量命中对象。
         params = {
             "action": "search",
             "query": query,
@@ -891,7 +883,6 @@ class RAGTool(Tool):
     
     def add_documents_batch(self, file_paths: List[str], namespace: str = "default") -> str:
         """批量添加多个文档"""
-        # 学习提示：逐文件添加并统计结果；部分成功与全部成功需要根据返回详情区分。
         if not file_paths:
             return "❌ 文件路径列表不能为空"
         
@@ -938,7 +929,6 @@ class RAGTool(Tool):
     
     def add_texts_batch(self, texts: List[str], namespace: str = "default", document_ids: Optional[List[str]] = None) -> str:
         """批量添加多个文本"""
-        # 学习提示：逐条处理文本，可能部分写入后遇错，没有整批回滚保证。
         if not texts:
             return "❌ 文本列表不能为空"
         

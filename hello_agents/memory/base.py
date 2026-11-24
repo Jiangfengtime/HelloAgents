@@ -19,12 +19,14 @@ class MemoryItem(BaseModel):
     # id 用于跨存储定位同一条记忆；不是正文的语义向量或用户标识。
     id: str
     content: str
+    # 管理器用这个值选择 working/episodic/semantic/perceptual 的具体实现。
     memory_type: str
     # 记录归属，供检索过滤；字段本身不实现更新、删除等操作的权限检查。
     user_id: str
     timestamp: datetime
     # 重要性用于排序/淘汰，不是事实置信度；此字段未声明 0～1 的范围约束。
     importance: float = 0.5
+    # 扩展属性，如 session_id、来源、模态；不同类型从这里提取各自需要的字段。
     metadata: Dict[str, Any] = {}
 
     class Config:
@@ -61,6 +63,7 @@ class BaseMemory(ABC):
         self.config = config
         # 这里只保存后端引用；具体子类还可能自行初始化数据库，并不统一使用它。
         self.storage = storage_backend
+        # 从具体子类名推导类型，例如 WorkingMemory → working，便于通用代码标识实现。
         self.memory_type = self.__class__.__name__.lower().replace("memory", "")
 
     @abstractmethod
@@ -73,7 +76,6 @@ class BaseMemory(ABC):
         Returns:
             记忆ID
         """
-        # 学习提示：子类承担实际写入并返回 ID；此接口不承诺写入向量库和文档库具有原子性。
         pass
 
     @abstractmethod
@@ -88,7 +90,6 @@ class BaseMemory(ABC):
         Returns:
             相关记忆列表
         """
-        # 学习提示：返回 MemoryItem 列表；kwargs 用于传递用户、时间或类型特定过滤，是否支持由子类决定。
         pass
 
     @abstractmethod
@@ -105,7 +106,6 @@ class BaseMemory(ABC):
         Returns:
             是否更新成功
         """
-        # 学习提示：None 表示保留旧值；返回值通常只表达是否更新成功，不包含更新后的完整记录。
         pass
 
     @abstractmethod
@@ -135,7 +135,6 @@ class BaseMemory(ABC):
     @abstractmethod
     def clear(self):
         """清空所有记忆"""
-        # 学习提示：这是后端级清理契约，未约定用户范围；对外暴露前必须检查具体子类的删除范围。
         pass
 
     @abstractmethod
@@ -162,7 +161,6 @@ class BaseMemory(ABC):
         Returns:
             计算后的重要性分数
         """
-        # 学习提示：使用长度和关键词做规则加分；不会调用 LLM 判断内容价值。
         importance = base_importance
 
         # 基于内容长度

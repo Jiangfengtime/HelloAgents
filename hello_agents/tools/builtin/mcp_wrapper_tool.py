@@ -43,9 +43,9 @@ class MCPWrappedTool(Tool):
             tool_info: MCP工具信息（包含name, description, input_schema）
             prefix: 工具名前缀（如 "filesystem_"）
         """
-        # 学习提示：本地 name 可以带前缀，mcp_tool_name 始终保留服务端原名，避免发送错误名称。
         self.mcp_tool = mcp_tool
         self.tool_info = tool_info
+        # 保留服务端工具原名；对外展示的本地名称可以另带前缀。
         self.mcp_tool_name = tool_info.get('name', 'unknown')
 
         # 构建工具名：prefix + mcp_tool_name
@@ -73,10 +73,10 @@ class MCPWrappedTool(Tool):
         Returns:
             ToolParameter列表
         """
-        # 学习提示：只转换顶层 properties 的类型、说明和 required；嵌套约束、enum/default 等未完整保留。
         parameters = []
 
         properties = input_schema.get('properties', {})
+        # JSON Schema 将必填参数名放在独立数组中，后面判断当前参数名是否在其中。
         required_fields = input_schema.get('required', [])
 
         for param_name, param_info in properties.items():
@@ -84,6 +84,7 @@ class MCPWrappedTool(Tool):
             param_desc = param_info.get('description', '')
             is_required = param_name in required_fields
 
+            # 转换顶层类型、说明与必填标志；嵌套 items、enum 等约束当前没有完整复制。
             parameters.append(ToolParameter(
                 name=param_name,
                 type=param_type,  # 直接使用JSON Schema的类型字符串
@@ -100,7 +101,6 @@ class MCPWrappedTool(Tool):
         Returns:
             ToolParameter列表
         """
-        # 学习提示：返回缓存的参数列表，没有在这里重新向服务端发现 schema。
         return self._parameters
 
     def run(self, params: Dict[str, Any]) -> str:
@@ -113,11 +113,11 @@ class MCPWrappedTool(Tool):
         Returns:
             执行结果
         """
-        # 学习提示：把当前参数整体放入 arguments，转给父工具 call_tool；包装器自身不执行远程函数。
         # 构建MCP调用参数
         mcp_params = {
             "action": "call_tool",
             "tool_name": self.mcp_tool_name,
+            # 把业务参数整个放入 arguments，父 MCPTool 再交给协议客户端。
             "arguments": params
         }
 

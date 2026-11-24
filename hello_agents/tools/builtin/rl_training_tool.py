@@ -28,7 +28,6 @@ class RLTrainingTool(Tool):
     """
 
     def __init__(self):
-        # 学习提示：检查 TRL 可用性并创建自定义数据/奖励注册表；不在构造时启动训练。
         super().__init__(
             name="rl_training",
             description=(
@@ -58,7 +57,6 @@ class RLTrainingTool(Tool):
             name: 数据集名称
             dataset: 数据集对象(HuggingFace Dataset)
         """
-        # 学习提示：按名字保存数据集对象供训练查找，不自动下载、复制或验证训练数据。
         self.custom_datasets[name] = dataset
         print(f"✅ 已注册自定义数据集: {name}")
 
@@ -70,7 +68,6 @@ class RLTrainingTool(Tool):
             name: 奖励函数名称
             reward_fn: 奖励函数(接受completions和kwargs,返回rewards列表)
         """
-        # 学习提示：保存 Python callable，不会因为注册就计算奖励或更新权重。
         self.custom_reward_functions[name] = reward_fn
         print(f"✅ 已注册自定义奖励函数: {name}")
 
@@ -105,7 +102,6 @@ class RLTrainingTool(Tool):
         Returns:
             操作结果的JSON字符串
         """
-        # 学习提示：先检查 TRL 再按 action 分派，默认 action=train；业务异常包装成 JSON 字符串而非继续抛出。
         # 检查TRL是否可用
         if not self.trl_available:
             return json.dumps({
@@ -119,6 +115,7 @@ class RLTrainingTool(Tool):
             }, ensure_ascii=False, indent=2)
 
         # 获取操作类型
+        # 未传动作时默认 train，调用前应明确是否确实需要训练，而不是仅查看配置。
         action = parameters.get("action", "train").lower()
 
         try:
@@ -147,7 +144,6 @@ class RLTrainingTool(Tool):
 
     def _handle_train(self, parameters: Dict[str, Any]) -> str:
         """处理训练操作"""
-        # 学习提示：解析算法、模型、批次与输出目录并分派 SFT/GRPO，monitoring 配置可能产生额外日志输出。
         algorithm = parameters.get("algorithm", "sft").lower()
         model_name = parameters.get("model_name", "Qwen/Qwen2-0.5B-Instruct")
         dataset_name = parameters.get("dataset", "gsm8k")
@@ -192,6 +188,7 @@ class RLTrainingTool(Tool):
 
         print(f"{'='*60}\n")
 
+        # SFT 使用示范数据训练；GRPO 分支还需要奖励函数，最终都可能更新模型权重。
         if algorithm == "sft":
             result = self._train_sft(
                 model_name=model_name,
@@ -231,7 +228,6 @@ class RLTrainingTool(Tool):
 
     def _handle_load_dataset(self, parameters: Dict[str, Any]) -> str:
         """处理数据集加载操作"""
-        # 学习提示：调用数据构造函数并返回规模/字段摘要，返回 JSON 不包含可直接训练的数据集对象。
         from hello_agents.rl import create_sft_dataset, create_rl_dataset
 
         format_type = parameters.get("format", "sft").lower()
@@ -260,7 +256,6 @@ class RLTrainingTool(Tool):
 
     def _handle_create_reward(self, parameters: Dict[str, Any]) -> str:
         """处理奖励函数创建操作"""
-        # 学习提示：构造奖励 callable 但当前只返回说明，未自动加入 custom_reward_functions 注册表。
         from hello_agents.rl import (
             create_accuracy_reward,
             create_length_penalty_reward,
@@ -313,11 +308,11 @@ class RLTrainingTool(Tool):
                 "message": f"不支持的奖励类型: {reward_type}。支持的类型: accuracy, length_penalty, step"
             }, ensure_ascii=False, indent=2)
 
+        # 这里只返回奖励说明，局部 reward_fn 没有自动放入注册表，也不会随 JSON 返回。
         return json.dumps(result, ensure_ascii=False, indent=2)
 
     def _handle_evaluate(self, parameters: Dict[str, Any]) -> str:
         """处理模型评估操作"""
-        # 学习提示：加载实际权重并逐样本生成，按 ground_truth 计算奖励；这与远程聊天 API 连通性测试不同。
         try:
             from hello_agents.rl import (
                 create_rl_dataset,
@@ -387,6 +382,7 @@ class RLTrainingTool(Tool):
                         pad_token_id=tokenizer.pad_token_id
                     )
                 # 只取生成的部分,不包括输入
+                # 切掉与输入等长的前缀，只对新生成的回答评分，避免把题目里的数字误当作答案。
                 completion = tokenizer.decode(outputs[0][inputs['input_ids'].shape[1]:], skip_special_tokens=True)
 
                 completions.append(completion)
@@ -399,6 +395,7 @@ class RLTrainingTool(Tool):
             # 计算奖励
             print("📊 计算评估指标...")
             reward_fn = create_accuracy_reward()
+            # 按相同顺序比较 completions 和 ground_truths；当前奖励是0/1时，其均值才等于准确率。
             rewards = reward_fn(completions, ground_truth=ground_truths)
 
             # 计算统计信息
@@ -441,7 +438,6 @@ class RLTrainingTool(Tool):
         wandb_project: Optional[str] = None
     ) -> Dict[str, Any]:
         """执行SFT训练"""
-        # 学习提示：优先用显式数据，其次已注册数据，再加载默认数据；train 后 save_model 会持久化权重。
         from hello_agents.rl import (
             SFTTrainerWrapper,
             TrainingConfig,
@@ -465,6 +461,7 @@ class RLTrainingTool(Tool):
         setup_training_environment(config)
 
         # 加载数据集
+        # 优先级：显式数据对象 → 按名字注册的数据 → 默认数据集。
         if custom_dataset is not None:
             # 使用自定义数据集
             dataset = custom_dataset
@@ -481,6 +478,7 @@ class RLTrainingTool(Tool):
         trainer_wrapper = SFTTrainerWrapper(config=config, dataset=dataset)
 
         # 开始训练
+        # 从此处开始真实训练；下面 save_model 将训练后的权重写入输出目录。
         trainer_wrapper.train()
 
         # 保存模型
@@ -511,7 +509,6 @@ class RLTrainingTool(Tool):
         wandb_project: Optional[str] = None
     ) -> Dict[str, Any]:
         """执行GRPO训练"""
-        # 学习提示：除训练数据外还选择奖励函数，真实参数更新由 GRPOTrainerWrapper.train 完成。
         from hello_agents.rl import (
             GRPOTrainerWrapper,
             TrainingConfig,
@@ -549,6 +546,7 @@ class RLTrainingTool(Tool):
             dataset = create_rl_dataset(max_samples=max_samples, model_name=model_name)
 
         # 创建奖励函数
+        # 优先使用显式奖励函数；否则按 dataset_name 查询注册表，最后回退准确性奖励。
         if custom_reward is not None:
             # 使用自定义奖励函数
             reward_fn = custom_reward
@@ -585,7 +583,6 @@ class RLTrainingTool(Tool):
     
     def get_parameters(self) -> List[ToolParameter]:
         """获取工具参数定义"""
-        # 学习提示：schema 只能描述可传参数，不能保证所有布尔/数量/目录值已经完成业务校验。
         return [
             ToolParameter(
                 name="action",
@@ -693,7 +690,6 @@ def train_with_sft(
     Returns:
         训练结果JSON字符串
     """
-    # 学习提示：同步快捷入口会创建工具并调用训练，不是只返回一份待执行配置。
     tool = RLTrainingTool()
     return tool.run({
         "action": "train",
@@ -723,7 +719,6 @@ def train_with_grpo(
     Returns:
         训练结果JSON字符串
     """
-    # 学习提示：调用真实 GRPO 训练入口，需要数据、模型和算力依赖可用。
     tool = RLTrainingTool()
     return tool.run({
         "action": "train",
@@ -751,7 +746,6 @@ def load_dataset(
     Returns:
         数据集信息JSON字符串
     """
-    # 学习提示：返回工具的 JSON 文本结果，不是 datasets.Dataset 实例。
     tool = RLTrainingTool()
     return tool.run({
         "action": "load_dataset",
@@ -777,7 +771,6 @@ def create_reward_function(
     Returns:
         奖励函数信息JSON字符串
     """
-    # 学习提示：返回工具报告的字符串说明；若要实际 callable，可直接使用 rl/rewards.py 的工厂。
     tool = RLTrainingTool()
     params = {
         "action": "create_reward",
@@ -801,7 +794,6 @@ def evaluate_model(
     Returns:
         评估结果JSON字符串
     """
-    # 学习提示：实际运行本地模型评估并返回 JSON 字符串，可能加载权重和测试数据。
     tool = RLTrainingTool()
     return tool.run({
         "action": "evaluate",

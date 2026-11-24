@@ -45,20 +45,19 @@ class Protocol:
             protocol_type: 协议类型
             version: 协议版本
         """
-        # 学习提示：保存协议类型枚举与版本说明；构造对象不启动服务器，也不验证版本兼容性。
+        # 保存枚举值以便显示名称；此对象不建立连接，也不承担协议消息协商。
         self._protocol_type = protocol_type
         self._version = version
     
     @property
     def protocol_name(self) -> str:
         """获取协议名称"""
-        # 学习提示：@property 允许像属性一样访问 protocol_name，返回枚举的字符串值。
         return self._protocol_type.value
     
     @property
     def version(self) -> str:
         """获取协议版本"""
-        # 学习提示：直接返回构造时保存的版本；不是从远程端点查询得到的运行状态。
+        # 返回构造时保存的说明版本，不是从远端会话获取的MCP protocolVersion。
         return self._version
     
     def __str__(self) -> str:

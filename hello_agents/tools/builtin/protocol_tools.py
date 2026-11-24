@@ -108,7 +108,6 @@ class MCPTool(Tool):
             ...     # 自动从环境变量加载GITHUB_PERSONAL_ACCESS_TOKEN
             ... )
         """
-        # 学习提示：构造时就尝试发现远程工具；可能启动子进程或连接服务，不是仅保存配置。
         self.server_command = server_command
         self.server_args = server_args or []
         self.server = server
@@ -125,6 +124,7 @@ class MCPTool(Tool):
             self.server = self._create_builtin_server()
 
         # 自动发现工具
+        # 构造时立即发现工具；stdio 配置可能在这里启动服务子进程，不只是保存参数。
         self._discover_tools()
 
         # 设置默认描述或自动生成
@@ -153,7 +153,6 @@ class MCPTool(Tool):
         Returns:
             合并后的环境变量字典
         """
-        # 学习提示：按自动检测→env_keys→显式 env 依次覆盖；日志只显示变量名，不应追加密钥值。
         result_env = {}
 
         # 1. 自动检测（优先级最低）
@@ -187,6 +186,7 @@ class MCPTool(Tool):
 
         # 3. 直接传递的env（优先级最高）
         if env:
+            # 显式 env 最后合并，因此覆盖自动探测和 env_keys 中的同名变量。
             result_env.update(env)
             for key in env.keys():
                 print(f"🔑 使用直接传递的环境变量: {key}")
@@ -195,7 +195,6 @@ class MCPTool(Tool):
 
     def _create_builtin_server(self):
         """创建内置演示服务器"""
-        # 学习提示：创建本地 FastMCP 演示实例，工具函数直接计算/拼接，不调用大模型。
         try:
             from fastmcp import FastMCP
 
@@ -249,7 +248,6 @@ class MCPTool(Tool):
 
     def _discover_tools(self):
         """发现MCP服务器提供的所有工具"""
-        # 学习提示：同步等待异步发现；已有事件循环时用新线程运行，发现失败统一变成空列表。
         try:
             from hello_agents.protocols.mcp.client import MCPClient
             import asyncio
@@ -278,15 +276,16 @@ class MCPTool(Tool):
                     self._available_tools = future.result()
             except RuntimeError:
                 # 没有运行中的循环
+                # 没有已运行事件循环时创建临时循环，发现完成后退出异步连接上下文。
                 self._available_tools = asyncio.run(discover())
 
         except Exception as e:
             # 工具发现失败不影响初始化
+            # 发现失败会静默转成空列表；空列表不能直接证明远端本来没有任何工具。
             self._available_tools = []
 
     def _generate_description(self) -> str:
         """生成增强的工具描述"""
-        # 学习提示：根据缓存的发现结果生成说明，不是每次实时探测服务能力。
         if not self._available_tools:
             return "连接到 MCP 服务器，调用工具、读取资源和获取提示词。支持内置服务器和外部服务器。"
 
@@ -328,7 +327,6 @@ class MCPTool(Tool):
         Returns:
             Tool对象列表
         """
-        # 学习提示：将缓存中的每个远程工具包装为子工具并加前缀，执行时仍转回父 MCPTool。
         if not self.auto_expand:
             return []
 
@@ -339,6 +337,7 @@ class MCPTool(Tool):
             wrapped_tool = MCPWrappedTool(
                 mcp_tool=self,
                 tool_info=tool_info,
+                # 本地给名称加前缀以区分多个服务器，包装器另保存远端原名用于真正调用。
                 prefix=self.prefix
             )
             expanded_tools.append(wrapped_tool)
@@ -362,13 +361,13 @@ class MCPTool(Tool):
         Returns:
             操作结果
         """
-        # 学习提示：每次动作在 async with 内新建连接，返回后关闭；stdio 服务进程生命周期也可能随该连接变化。
         from hello_agents.protocols.mcp.client import MCPClient
 
         # 智能推断action：如果没有action但有tool_name，自动设置为call_tool
         action = parameters.get("action", "").lower()
         if not action and "tool_name" in parameters:
             action = "call_tool"
+            # 推断动作后原地写回参数字典，调用方持有的同一个字典也会看到变化。
             parameters["action"] = action
 
         if not action:
@@ -403,6 +402,7 @@ class MCPTool(Tool):
                         arguments = parameters.get("arguments", {})
                         if not tool_name:
                             return "错误：必须指定 tool_name 参数"
+                        # 通过真实协议客户端调用远端处理器；工具是否有文件/网络副作用取决于服务端实现。
                         result = await client.call_tool(tool_name, arguments)
                         return f"工具 '{tool_name}' 执行结果:\n{result}"
 
@@ -477,7 +477,6 @@ class MCPTool(Tool):
     
     def get_parameters(self) -> List[ToolParameter]:
         """获取工具参数定义"""
-        # 学习提示：父工具暴露 action/tool_name/arguments 等协议操作参数；展开子工具时模型直接使用远端参数。
         return [
             ToolParameter(
                 name="action",
@@ -557,7 +556,6 @@ class A2ATool(Tool):
             name: 工具名称（可选，默认为 "a2a"）
             description: 工具描述（可选）
         """
-        # 学习提示：保存 Agent 地址，真正 HTTP 调用在 run 内完成。
         if description is None:
             description = "连接到 A2A Agent，支持提问和获取信息。需要安装官方 a2a-sdk 库。"
 
@@ -579,7 +577,6 @@ class A2ATool(Tool):
         Returns:
             操作结果
         """
-        # 学习提示：先检查 SDK 可用标志，再调用本项目 HTTP 客户端；返回错误字符串可能被外层当作普通内容。
         try:
             from hello_agents.protocols.a2a.implementation import A2AClient, A2A_AVAILABLE
             if not A2A_AVAILABLE:
@@ -599,6 +596,7 @@ class A2ATool(Tool):
             return "错误：必须指定 action 参数"
         
         try:
+            # 创建本项目的 HTTP 客户端，后续 ask/get_info 才真正发出网络请求。
             client = A2AClient(self.agent_url)
             
             if action == "ask":
@@ -686,7 +684,6 @@ class ANPTool(Tool):
             discovery: 可选的 ANPDiscovery 实例，如果不提供则创建新实例
             network: 可选的 ANPNetwork 实例，如果不提供则创建新实例
         """
-        # 学习提示：可复用外部 discovery/network 对象，否则创建内存实例；共享对象意味着共享登记状态。
         if description is None:
             description = "智能体网络管理工具，支持服务发现、节点管理和消息路由。概念性实现。"
 
@@ -712,7 +709,6 @@ class ANPTool(Tool):
         Returns:
             操作结果
         """
-        # 学习提示：按动作修改服务表/拓扑或查询路径；route_message 返回路径不证明 message 已通过网络送达。
         from hello_agents.protocols.anp.implementation import ServiceInfo
 
         action = parameters.get("action", "").lower()
@@ -730,6 +726,7 @@ class ANPTool(Tool):
                 if not all([service_id, service_type, endpoint]):
                     return "错误：必须指定 service_id, service_type 和 endpoint 参数"
                 
+                # 当前第4个位置参数会绑定 service_name 而非 metadata；注释说明现状，不改变调用。
                 service = ServiceInfo(service_id, service_type, endpoint, metadata)
                 self._discovery.register_service(service)
                 return f"✅ 已注册服务 '{service_id}'"

@@ -68,7 +68,6 @@ class Neo4jGraphStore:
     
     def _initialize_driver(self, **config):
         """初始化Neo4j驱动"""
-        # 学习提示：构造驱动并验证连接；实例化失败通常属于服务、认证或连接配置问题。
         try:
             self.driver = GraphDatabase.driver(
                 self.uri,
@@ -103,7 +102,6 @@ class Neo4jGraphStore:
     
     def _create_indexes(self):
         """创建必要的索引以提高查询性能"""
-        # 学习提示：为实体与记忆字段创建索引；它们是查询辅助结构，不会自动提取知识。
         indexes = [
             # 实体索引
             "CREATE INDEX entity_id_index IF NOT EXISTS FOR (e:Entity) ON (e.id)",
@@ -138,9 +136,9 @@ class Neo4jGraphStore:
         Returns:
             bool: 是否成功
         """
-        # 学习提示：MERGE 按实体 id 查找或创建节点；同 ID 会复用节点，而非每次追加独立节点。
         try:
             props = properties or {}
+            # 补充节点ID、类型和时间；props 直接引用传入 properties 时也会修改调用方字典。
             props.update({
                 "id": entity_id,
                 "name": name,
@@ -187,7 +185,6 @@ class Neo4jGraphStore:
         Returns:
             bool: 是否成功
         """
-        # 学习提示：先定位两端实体，再创建/合并指定类型关系；关系类型被用于查询结构，需由可信代码约束。
         try:
             props = properties or {}
             props.update({
@@ -196,6 +193,7 @@ class Neo4jGraphStore:
                 "updated_at": datetime.now().isoformat()
             })
             
+            # 关系类型要拼入查询结构，不能当作普通值占位；应由可信代码限定类型名称。
             query = f"""
             MATCH (from:Entity {{id: $from_id}})
             MATCH (to:Entity {{id: $to_id}})
@@ -241,11 +239,11 @@ class Neo4jGraphStore:
         Returns:
             List[Dict]: 相关实体列表
         """
-        # 学习提示：沿图边最多遍历 max_depth 跳；返回路径距离/关系类型，不等于调用大模型进行推理。
         try:
             # 构建关系类型过滤
             rel_filter = ""
             if relationship_types:
+                # 多种关系类型用 | 表示候选类型，max_depth 决定最多遍历几跳。
                 rel_types = "|".join(relationship_types)
                 rel_filter = f":{rel_types}"
             
@@ -288,7 +286,6 @@ class Neo4jGraphStore:
         Returns:
             List[Dict]: 匹配的实体列表
         """
-        # 学习提示：按名字模式及可选实体类型筛选，不是文本嵌入相似度查询。
         try:
             # 构建类型过滤
             type_filter = ""
@@ -369,7 +366,6 @@ class Neo4jGraphStore:
         Returns:
             bool: 是否成功
         """
-        # 学习提示：DETACH DELETE 会连同该节点的边一起删除，可能影响其他记忆使用的共享关系。
         try:
             query = """
             MATCH (e:Entity {id: $entity_id})
@@ -378,6 +374,7 @@ class Neo4jGraphStore:
             
             with self.driver.session(database=self.database) as session:
                 result = session.run(query, entity_id=entity_id)
+                # 消费查询结果取得删除计数；DETACH DELETE 同时移除节点关联的边。
                 summary = result.consume()
                 
                 deleted_count = summary.counters.nodes_deleted
@@ -395,8 +392,8 @@ class Neo4jGraphStore:
         Returns:
             bool: 是否成功
         """
-        # 学习提示：MATCH (n) 覆盖当前所选数据库全部节点，没有限定用户或 Memory 标签。
         try:
+            # 未加用户、标签或命名空间条件，会清空当前选定数据库的所有节点及边。
             query = "MATCH (n) DETACH DELETE n"
             
             with self.driver.session(database=self.database) as session:
@@ -448,7 +445,6 @@ class Neo4jGraphStore:
         Returns:
             bool: 服务是否健康
         """
-        # 学习提示：RETURN 1 只检验最小查询是否成功，不能证明业务数据、索引或图结构正确。
         try:
             with self.driver.session(database=self.database) as session:
                 result = session.run("RETURN 1 as health")

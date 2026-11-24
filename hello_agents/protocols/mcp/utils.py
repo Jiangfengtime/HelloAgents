@@ -36,7 +36,6 @@ def create_context(
         ...     tools=[{"name": "calculator", "description": "计算器"}]
         ... )
     """
-    # 学习提示：非空列表/字典直接放进结果，没有深拷贝；调用方后续修改这些对象可能影响上下文。
     return {
         "messages": messages or [],
         "tools": tools or [],
@@ -62,9 +61,9 @@ def parse_context(context: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
         >>> context_str = '{"messages": [], "tools": []}'
         >>> parsed = parse_context(context_str)
     """
-    # 学习提示：字符串先做 JSON 解析，只检查顶层是 dict；setdefault 会原地补字段，不校验字段值的类型。
     if isinstance(context, str):
         try:
+            # 先把JSON文本转为Python对象；这里只验证顶层类型，字段内部并没有schema校验。
             context = json.loads(context)
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid JSON context: {e}")
@@ -74,6 +73,7 @@ def parse_context(context: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
     
     # 确保必需字段存在
     for field in ["messages", "tools", "resources"]:
+        # 缺失才补空列表，不覆盖已有字段；传入dict时会原地修改调用方对象。
         context.setdefault(field, [])
     context.setdefault("metadata", {})
     
@@ -99,7 +99,6 @@ def create_error_response(
     Example:
         >>> error = create_error_response("Tool not found", "TOOL_NOT_FOUND")
     """
-    # 学习提示：这是自定义 error 包装，不是自动满足 JSON-RPC 的 id/code/message 错误信封。
     response = {
         "error": {
             "message": error_message,
@@ -130,9 +129,9 @@ def create_success_response(
     Example:
         >>> response = create_success_response({"result": 42})
     """
-    # 学习提示：success/data 是应用层约定，不能替代 MCP SDK 规定的工具结果或资源内容结构。
     response = {
         "success": True,
+        # 业务结果放入自定义data字段；这是应用包装，不会自动生成MCP或JSON-RPC结果信封。
         "data": data
     }
     

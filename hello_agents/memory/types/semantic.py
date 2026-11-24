@@ -227,6 +227,7 @@ class SemanticMemory(BaseMemory):
             
             # 2. 提取实体和关系
             # 实体/关系由本文件的 NLP 与规则逻辑提取；不能直接等同于大模型知识抽取。
+            # 从本条正文提取实体，关系抽取会使用这些实体作为候选端点。
             entities = self._extract_entities(memory_item.content)
             relations = self._extract_relations(memory_item.content, entities)
             
@@ -234,6 +235,7 @@ class SemanticMemory(BaseMemory):
             for entity in entities:
                 self._add_entity_to_graph(entity, memory_item)
             
+            # 逐条写实体关系；与后面的向量写入属于不同数据库操作，没有共同事务。
             for relation in relations:
                 self._add_relation_to_graph(relation, memory_item)
             
@@ -247,6 +249,7 @@ class SemanticMemory(BaseMemory):
                 "memory_type": memory_item.memory_type,
                 "timestamp": int(memory_item.timestamp.timestamp()),
                 "importance": memory_item.importance,
+                # 向量 payload 保存实体 ID 而不是实体对象，供后续关联与结果展示。
                 "entities": [e.entity_id for e in entities],
                 "entity_count": len(entities),
                 "relation_count": len(relations)
@@ -290,6 +293,7 @@ class SemanticMemory(BaseMemory):
             graph_results = self._graph_search(query, limit * 2, user_id)
             
             # 3. 混合排序
+            # 将文本相似度命中与图关系命中合并成统一候选，再取需要的条数。
             combined_results = self._combine_and_rank_results(
                 vector_results, graph_results, query, limit
             )
@@ -298,6 +302,7 @@ class SemanticMemory(BaseMemory):
             scores = [r.get("combined_score", r.get("vector_score", 0.0)) for r in combined_results]
             if scores:
                 import math
+                # softmax 前减去最大分数，使指数不易溢出；归一化只表示本批候选相对权重。
                 max_s = max(scores)
                 exps = [math.exp(s - max_s) for s in scores]
                 denom = sum(exps) or 1.0
@@ -312,6 +317,7 @@ class SemanticMemory(BaseMemory):
                 memory_id = result.get("memory_id")
                 
                 # 检查是否已遗忘
+                # 在当前内存缓存中找该ID，用于检查遗忘标记；缓存未命中不等于数据库没有记录。
                 memory = next((m for m in self.semantic_memories if m.id == memory_id), None)
                 if memory and memory.metadata.get("forgotten", False):
                     continue  # 跳过已遗忘的记忆
@@ -598,7 +604,6 @@ class SemanticMemory(BaseMemory):
     
     def _extract_entities(self, text: str) -> List[Entity]:
         """智能多语言实体提取"""
-        # 学习提示：按可用 NLP/规则提取实体，再形成 Entity；结果受语言模型资源和匹配规则影响。
         entities = []
         
         # 检测文本语言
@@ -738,7 +743,6 @@ class SemanticMemory(BaseMemory):
     
     def _extract_relations(self, text: str, entities: List[Entity]) -> List[Relation]:
         """提取关系"""
-        # 学习提示：关系由正文和已识别实体共同决定；抽取出来的边仍需业务验证。
         relations = []
         # 仅保留简单共现关系，不做任何正则/关键词匹配
         for i, entity1 in enumerate(entities):
@@ -1054,7 +1058,6 @@ class SemanticMemory(BaseMemory):
 
     def get_all(self) -> List[MemoryItem]:
         """获取所有语义记忆"""
-        # 学习提示：返回本实例持有的语义记忆缓存，不保证是数据库中所有用户记录的完整快照。
         return self.semantic_memories.copy()
     
     def get_stats(self) -> Dict[str, Any]:

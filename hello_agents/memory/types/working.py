@@ -52,6 +52,7 @@ class WorkingMemory(BaseMemory):
         priority = self._calculate_priority(memory_item)
         
         # 添加到堆中
+        # Python 是最小堆，保存负优先级让更高优先级排前；列表仍保存实际 MemoryItem。
         heapq.heappush(self.memory_heap, (-priority, memory_item.timestamp, memory_item))
         self.memories.append(memory_item)
         
@@ -60,6 +61,7 @@ class WorkingMemory(BaseMemory):
         self.current_tokens += len(memory_item.content.split())
         
         # 检查容量限制
+        # 新增后再检查条数和容量，超限时移除低优先级记录。
         self._enforce_capacity_limits()
         
         return memory_item.id
@@ -72,6 +74,7 @@ class WorkingMemory(BaseMemory):
             return []
 
         # 过滤已遗忘的记忆
+        # 排除 metadata 标记 forgotten 的记录，再按 user_id 缩小范围。
         active_memories = [m for m in self.memories if not m.metadata.get("forgotten", False)]
         
         # 按用户ID过滤（如果提供）
@@ -92,6 +95,7 @@ class WorkingMemory(BaseMemory):
             import numpy as np
             
             # 准备文档
+            # 把问题也放进本轮语料，一次拟合共同 TF-IDF 词表，使问题和候选处于相同特征空间。
             documents = [query] + [m.content for m in filtered_memories]
             
             # TF-IDF向量化
@@ -100,6 +104,7 @@ class WorkingMemory(BaseMemory):
             tfidf_matrix = vectorizer.fit_transform(documents)
             
             # 计算相似度
+            # 第0行是问题，其余行与 filtered_memories 一一对应；保留二维形状以供余弦相似度计算。
             query_vector = tfidf_matrix[0:1]
             doc_vectors = tfidf_matrix[1:]
             similarities = cosine_similarity(query_vector, doc_vectors).flatten()
@@ -121,6 +126,7 @@ class WorkingMemory(BaseMemory):
             content_lower = memory.content.lower()
             
             # 获取向量分数（如果有）
+            # 某条记录没有 TF-IDF 分数时用0，后续仍可以通过关键词匹配命中。
             vector_score = vector_scores.get(memory.id, 0.0)
             
             # 关键词匹配分数
@@ -137,6 +143,7 @@ class WorkingMemory(BaseMemory):
 
             # 混合分数：向量检索 + 关键词匹配
             if vector_score > 0:
+                # 有向量匹配时取70% TF-IDF与30%关键词分数；并非远程大模型给出的语义评分。
                 base_relevance = vector_score * 0.7 + keyword_score * 0.3
             else:
                 base_relevance = keyword_score
@@ -154,6 +161,7 @@ class WorkingMemory(BaseMemory):
                 scored_memories.append((final_score, memory))
 
         # 按分数排序并返回
+        # 排序列表元素为 (分数, MemoryItem)，只比较元组的第0项。
         scored_memories.sort(key=lambda x: x[0], reverse=True)
         return [memory for _, memory in scored_memories[:limit]]
     
@@ -165,7 +173,6 @@ class WorkingMemory(BaseMemory):
         metadata: Dict[str, Any] = None
     ) -> bool:
         """更新工作记忆"""
-        # 学习提示：更新正文时同步本对象的容量计数和堆；此处未调用外部数据库。
         for memory in self.memories:
             if memory.id == memory_id:
                 old_tokens = len(memory.content.split())
@@ -174,6 +181,7 @@ class WorkingMemory(BaseMemory):
                     memory.content = content
                     # 更新token计数
                     new_tokens = len(content.split())
+                    # 先减旧正文词数，再加新正文词数，防止更新后容量计数不断累加。
                     self.current_tokens = self.current_tokens - old_tokens + new_tokens
                 
                 if importance is not None:
@@ -190,7 +198,6 @@ class WorkingMemory(BaseMemory):
     
     def remove(self, memory_id: str) -> bool:
         """删除工作记忆"""
-        # 学习提示：从列表删除并调整计数；堆删除标记辅助方法当前为空，实际淘汰仍依赖列表遍历。
         for i, memory in enumerate(self.memories):
             if memory.id == memory_id:
                 # 从列表中删除
@@ -212,7 +219,6 @@ class WorkingMemory(BaseMemory):
     
     def clear(self):
         """清空所有工作记忆"""
-        # 学习提示：清空当前实例的列表、堆和计数；不影响 Agent._history，也不清空长期数据库。
         self.memories.clear()
         self.memory_heap.clear()
         self.current_tokens = 0
@@ -242,7 +248,6 @@ class WorkingMemory(BaseMemory):
     
     def get_recent(self, limit: int = 10) -> List[MemoryItem]:
         """获取最近的记忆"""
-        # 学习提示：按时间排序当前缓存，不能返回已因 TTL 或容量被淘汰的记录。
         sorted_memories = sorted(
             self.memories, 
             key=lambda x: x.timestamp, 
@@ -265,7 +270,6 @@ class WorkingMemory(BaseMemory):
     
     def get_context_summary(self, max_length: int = 500) -> str:
         """获取上下文摘要"""
-        # 学习提示：这是字符串拼接的上下文摘要，不调用模型；max_length 为字符长度限制。
         if not self.memories:
             return "No working memories available."
         
@@ -371,7 +375,6 @@ class WorkingMemory(BaseMemory):
 
     def _expire_old_memories(self):
         """按TTL清理过期记忆，并同步更新堆与token计数"""
-        # 学习提示：保留未过期项后重建堆并减去容量计数；清理只在显式调用该方法的入口触发。
         if not self.memories:
             return
         cutoff_time = datetime.now() - timedelta(minutes=self.max_age_minutes)
@@ -386,6 +389,7 @@ class WorkingMemory(BaseMemory):
         if len(kept) == len(self.memories):
             return
         # 覆盖列表与token
+        # 把列表替换成未过期项；随后同步计数并重建堆，保持几个内存结构一致。
         self.memories = kept
         self.current_tokens = max(0, self.current_tokens - removed_token_sum)
         # 重建堆

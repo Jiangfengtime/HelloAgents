@@ -24,10 +24,10 @@ class ToolChain:
             input_template: 输入模板，支持变量替换，如 "{input}" 或 "{search_result}"
             output_key: 输出结果的键名，用于后续步骤引用
         """
-        # 学习提示：output_key 决定结果保存位置，后续 input_template 可使用该键；同名键会覆盖之前的值。
         step = {
             "tool_name": tool_name,
             "input_template": input_template,
+            # 未指定时按步骤序号生成结果键；后续模板用这个键读取本步输出。
             "output_key": output_key or f"step_{len(self.steps)}_result"
         }
         self.steps.append(step)
@@ -45,7 +45,6 @@ class ToolChain:
         Returns:
             最终执行结果
         """
-        # 学习提示：按步骤顺序调用注册表；传入 context 会被原地更新，模板缺键时立即返回错误。
         if not self.steps:
             return "❌ 工具链为空，无法执行"
 
@@ -59,6 +58,7 @@ class ToolChain:
         
         final_result = input_data
         
+        # 按登记顺序执行；i 从 0 开始，打印时加 1 便于阅读。
         for i, step in enumerate(self.steps):
             tool_name = step["tool_name"]
             input_template = step["input_template"]
@@ -68,6 +68,7 @@ class ToolChain:
             
             # 替换模板中的变量
             try:
+                # 例如模板 {search_result} 从 context 取前一步结果，缺少键会触发 KeyError 并终止。
                 actual_input = input_template.format(**context)
             except KeyError as e:
                 return f"❌ 模板变量替换失败: {e}"
@@ -76,6 +77,7 @@ class ToolChain:
             try:
                 result = registry.execute_tool(tool_name, actual_input)
                 # 注册表常将异常变成错误字符串，此处仍会向下传递，不能据此判断业务成功。
+                # 把输出存入上下文字典供下一步替换；错误字符串当前也会被当作普通输出保存。
                 context[output_key] = result
                 final_result = result
                 print(f"✅ 步骤 {i+1} 完成")
@@ -95,16 +97,15 @@ class ToolChainManager:
 
     def register_chain(self, chain: ToolChain):
         """注册工具链"""
-        # 学习提示：按链名保存同一对象引用，同名会覆盖，不在注册时验证每个工具是否存在。
         self.chains[chain.name] = chain
         print(f"✅ 工具链 '{chain.name}' 已注册")
 
     def execute_chain(self, chain_name: str, input_data: str, context: Dict[str, Any] = None) -> str:
         """执行指定的工具链"""
-        # 学习提示：找到已登记链后交给 execute；这里不额外判断链返回文本是否代表业务成功。
         if chain_name not in self.chains:
             return f"❌ 工具链 '{chain_name}' 不存在"
 
+        # 链名只定位已配置的步骤对象；执行仍使用管理器持有的同一个注册表。
         chain = self.chains[chain_name]
         return chain.execute(self.registry, input_data, context)
 
@@ -114,7 +115,6 @@ class ToolChainManager:
 
     def get_chain_info(self, chain_name: str) -> Optional[Dict[str, Any]]:
         """获取工具链信息"""
-        # 学习提示：返回步骤配置用于查看，不运行任何步骤。
         if chain_name not in self.chains:
             return None
         
@@ -137,7 +137,6 @@ class ToolChainManager:
 # 便捷函数
 def create_research_chain() -> ToolChain:
     """创建一个研究工具链：搜索 -> 计算 -> 总结"""
-    # 学习提示：仅构造预设链，示例依赖的工具名需在执行前自行注册。
     chain = ToolChain(
         name="research_and_calculate",
         description="搜索信息并进行相关计算"
@@ -162,7 +161,6 @@ def create_research_chain() -> ToolChain:
 
 def create_simple_chain() -> ToolChain:
     """创建一个简单的工具链示例"""
-    # 学习提示：返回配置好的 ToolChain，不会因创建函数被调用就自动执行链。
     chain = ToolChain(
         name="simple_demo",
         description="简单的工具链演示"

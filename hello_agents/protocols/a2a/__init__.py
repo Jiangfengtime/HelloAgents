@@ -50,11 +50,11 @@ MessageType = str
 
 def create_message(*args, **kwargs):
     """创建 A2A 消息（占位符）"""
-    # 学习提示：当前始终抛 ImportError，即使已经安装依赖也没有构造消息逻辑。
+    # 当前仍是占位入口，即便安装依赖也没有实际构造消息的逻辑。
     raise ImportError("Please install a2a library: pip install a2a")
 
 def parse_message(*args, **kwargs):
     """解析 A2A 消息（占位符）"""
-    # 学习提示：当前为未实现的占位入口，不会解析已有消息。
+    # 此函数尚未实现消息解析，别名A2AMessage=dict也不会补上该行为。
     raise ImportError("Please install a2a library: pip install a2a")
 

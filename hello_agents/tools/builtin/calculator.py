@@ -57,8 +57,8 @@ class CalculatorTool(Tool):
         Returns:
             计算结果
         """
-        # 学习提示：接受 input 或 expression；正常结果与失败都以字符串返回，上层需区分错误文本。
         # 支持两种参数格式：input 和 expression
+        # 兼容 input/expression 两个键，非空 input 优先；后续只解析这个表达式字符串。
         expression = parameters.get("input", "") or parameters.get("expression", "")
         if not expression:
             return "错误：计算表达式不能为空"
@@ -67,6 +67,7 @@ class CalculatorTool(Tool):
 
         try:
             # 解析表达式
+            # eval 模式只接受表达式语法；解析仅生成语法树，真正计算由下面的节点分派完成。
             node = ast.parse(expression, mode='eval')
             result = self._eval_node(node.body)
             result_str = str(result)
@@ -79,12 +80,13 @@ class CalculatorTool(Tool):
     
     def _eval_node(self, node):
         """递归计算AST节点"""
-        # 学习提示：按 AST 节点递归分派，函数名仅从 FUNCTIONS 查找；OPERATORS 中的 ^ 是异或而不是乘方。
+        # 数字常量是递归终点；例如表达式 2+3 的左右子节点会各自返回 2 和 3。
         if isinstance(node, ast.Constant):  # Python 3.8+
             return node.value
         elif isinstance(node, ast.Num):  # Python < 3.8
             return node.n
         elif isinstance(node, ast.BinOp):
+            # 用节点类型选择加减乘除等 Python 函数，再递归求左右操作数；^ 在映射中是异或。
             return self.OPERATORS[type(node.op)](
                 self._eval_node(node.left), 
                 self._eval_node(node.right)
@@ -92,6 +94,7 @@ class CalculatorTool(Tool):
         elif isinstance(node, ast.UnaryOp):
             return self.OPERATORS[type(node.op)](self._eval_node(node.operand))
         elif isinstance(node, ast.Call):
+            # 只允许直接函数名调用，如 sqrt(16)，再从 FUNCTIONS 白名单取实际函数。
             func_name = node.func.id
             if func_name in self.FUNCTIONS:
                 args = [self._eval_node(arg) for arg in node.args]
@@ -108,7 +111,6 @@ class CalculatorTool(Tool):
     
     def get_parameters(self):
         """获取工具参数定义"""
-        # 学习提示：公开的 schema 只声明 input，expression 是 run 内部兼容入口。
         from ..base import ToolParameter
         return [
             ToolParameter(
@@ -130,6 +132,5 @@ def calculate(expression: str) -> str:
     Returns:
         计算结果字符串
     """
-    # 学习提示：每次创建临时计算器并直接执行，不经过模型或注册表。
     tool = CalculatorTool()
     return tool.run({"input": expression})

@@ -16,7 +16,6 @@ class Document:
     doc_id: Optional[str] = None
     
     def __post_init__(self):
-        # 学习提示：dataclass 初始化后补 ID；相同正文得到相同默认 ID，metadata 本身不参与该哈希。
         if self.doc_id is None:
             # 基于内容生成ID
             self.doc_id = hashlib.md5(self.content.encode()).hexdigest()
@@ -31,7 +30,6 @@ class DocumentChunk:
     chunk_index: int = 0
     
     def __post_init__(self):
-        # 学习提示：默认块 ID 使用文档 ID、块序号和正文前缀，不是整个文件的内容版本号。
         if self.chunk_id is None:
             # 基于文档ID和块索引生成ID
             chunk_content = f"{self.doc_id}_{self.chunk_index}_{self.content[:50]}"
@@ -46,8 +44,8 @@ class DocumentProcessor:
         chunk_overlap: int = 200,
         separators: Optional[List[str]] = None
     ):
-        # 学习提示：这里 chunk_size/chunk_overlap 按字符计算；不要与 pipeline 的近似 Token 参数混为一谈。
         self.chunk_size = chunk_size
+        # 每块与下一块重叠的字符数，用于保留边界上下文；此实现不是Token分块。
         self.chunk_overlap = chunk_overlap
         self.separators = separators or ["\n\n", "\n", "。", ".", " "]
     
@@ -61,12 +59,12 @@ class DocumentProcessor:
         Returns:
             文档块列表
         """
-        # 学习提示：复制来源元数据，补块序号和总数，构造 DocumentChunk；没有执行嵌入或数据库入库。
         chunks = self._split_text(document.content)
         
         document_chunks = []
         for i, chunk_content in enumerate(chunks):
             # 创建块的元数据
+            # 复制元数据容器再补块序号，避免直接把块信息写回原文档的metadata。
             chunk_metadata = document.metadata.copy()
             chunk_metadata.update({
                 "doc_id": document.doc_id,
@@ -112,7 +110,6 @@ class DocumentProcessor:
         Returns:
             文本块列表
         """
-        # 学习提示：优先寻找自然分隔点，再回退硬切；重叠保留边界上下文，max(start+1, ...) 保证游标前进。
         if len(text) <= self.chunk_size:
             return [text]
         
@@ -138,6 +135,7 @@ class DocumentProcessor:
             chunks.append(text[start:split_point])
             
             # 计算下一块的开始位置（考虑重叠）
+            # 从前一块末尾回退重叠区，但至少向前走1个字符，避免游标停住死循环。
             start = max(start + 1, split_point - self.chunk_overlap)
         
         return chunks
@@ -154,7 +152,6 @@ class DocumentProcessor:
         Returns:
             分割点位置，-1表示未找到
         """
-        # 学习提示：按 separators 给出的优先级找分割点，并非比较所有分隔符后选择最近的那个。
         # 从后往前寻找分隔符
         for separator in self.separators:
             # 在end附近寻找分隔符
@@ -177,7 +174,6 @@ class DocumentProcessor:
         Returns:
             合并后的文档块列表
         """
-        # 学习提示：对同文档相邻块原地合并，可能修改输入块正文与元数据；长度判断未计入连接换行。
         if not chunks:
             return []
         
@@ -191,6 +187,7 @@ class DocumentProcessor:
             if (combined_length <= max_length and 
                 current_chunk.doc_id == next_chunk.doc_id):
                 # 合并块
+                # 同文档且总长度允许时直接修改已有块的正文；返回列表仍可能持有原输入对象。
                 current_chunk.content += "\n" + next_chunk.content
                 current_chunk.metadata["total_chunks"] = current_chunk.metadata.get("total_chunks", 1) + 1
             else:
@@ -214,7 +211,6 @@ class DocumentProcessor:
         Returns:
             过滤后的文档块列表
         """
-        # 学习提示：按去除两端空白后的字符长度过滤，不判定片段是否含有事实或答案。
         return [chunk for chunk in chunks if len(chunk.content.strip()) >= min_length]
     
     def add_chunk_metadata(self, chunks: List[DocumentChunk], metadata: Dict[str, Any]) -> List[DocumentChunk]:
@@ -228,7 +224,6 @@ class DocumentProcessor:
         Returns:
             更新后的文档块列表
         """
-        # 学习提示：原地更新传入块的 metadata，调用者保存的同一个对象也会看到变化。
         for chunk in chunks:
             chunk.metadata.update(metadata)
         
@@ -245,7 +240,6 @@ def load_text_file(file_path: str, encoding: str = "utf-8") -> Document:
     Returns:
         文档对象
     """
-    # 学习提示：读取 UTF-8 等指定编码的纯文本并包装成 Document；不负责 PDF/Office 格式转换。
     with open(file_path, 'r', encoding=encoding) as f:
         content = f.read()
     

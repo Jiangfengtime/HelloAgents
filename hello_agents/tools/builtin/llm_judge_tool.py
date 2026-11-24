@@ -28,7 +28,6 @@ class LLMJudgeTool(Tool):
         Args:
             llm: LLM实例，用于评估
         """
-        # 学习提示：可注入评委 LLM，未提供时由评估器选择/创建；构造此包装器不等于已评分。
         super().__init__(
             name="llm_judge_evaluation",
             description="使用LLM作为评委评估数据生成质量"
@@ -37,7 +36,7 @@ class LLMJudgeTool(Tool):
         
     def get_parameters(self) -> Dict[str, Any]:
         """获取工具参数定义"""
-        # 学习提示：当前返回 JSON Schema 字典而非 ToolParameter 列表，与通用基类及部分 Agent 适配契约不同。
+        # 此类直接返回 schema 字典，和通用 Tool 期望的 ToolParameter 列表不同，接入 Agent 时需确认适配。
         return {
             "type": "object",
             "properties": {
@@ -79,7 +78,6 @@ class LLMJudgeTool(Tool):
         Returns:
             评估结果的JSON字符串
         """
-        # 学习提示：读取本地生成数据和可选参考数据，再真实调用评委；输出目录会写 JSON 与 Markdown。
         # 解析参数
         generated_data_path = params["generated_data_path"]
         reference_data_path = params.get("reference_data_path")
@@ -98,6 +96,7 @@ class LLMJudgeTool(Tool):
         # 1. 加载生成数据
         print(f"\n📥 步骤1: 加载生成数据")
         gen_dataset = AIDataset(dataset_type="generated", data_path=generated_data_path)
+        # 从生成数据文件得到题目列表，再交给评估器；这是评测输入，不是模型预测输出。
         gen_problems = gen_dataset.load()
         
         if max_samples:
@@ -123,12 +122,14 @@ class LLMJudgeTool(Tool):
         
         # 4. 运行评估
         print(f"\n🚀 步骤4: 开始评估")
+        # 真实调用评委模型批量评分，结果反映该评委和评审提示下的判断。
         results = evaluator.evaluate_batch(gen_problems, ref_problems)
         
         # 5. 保存结果
         print(f"\n💾 步骤5: 保存评估结果")
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         result_file = os.path.join(output_dir, f"llm_judge_results_{timestamp}.json")
+        # 写入逐项评审与汇总结果；下面的 Markdown 报告只是对这些已有结果的展示。
         evaluator.export_results(results, result_file)
         
         # 6. 生成报告
@@ -154,7 +155,6 @@ class LLMJudgeTool(Tool):
     
     def _generate_report(self, results: Dict[str, Any], output_path: str):
         """生成Markdown评估报告"""
-        # 学习提示：将已有指标转为人类可读报告，不追加独立的事实核查或代码执行。
         metrics = results["metrics"]
         
         report = f"""# LLM Judge评估报告
@@ -219,7 +219,6 @@ class LLMJudgeTool(Tool):
     
     def _get_rating(self, score: float) -> str:
         """根据分数获取评级"""
-        # 学习提示：按分数阈值映射文字评级，评级不是另一个模型独立评审的结论。
         if score >= 4.5:
             return "优秀 ⭐⭐⭐⭐⭐"
         elif score >= 4.0:

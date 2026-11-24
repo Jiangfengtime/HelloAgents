@@ -86,7 +86,6 @@ class MCPClient:
         Raises:
             ImportError: 如果 fastmcp 库未安装
         """
-        # 学习提示：保存启动参数并准备传输对象；真正进入 SDK 连接发生在 __aenter__，不是构造方法完成时。
         if not FASTMCP_AVAILABLE:
             raise ImportError(
                 "Enhanced MCP client requires the 'fastmcp' library (version 2.0+). "
@@ -97,15 +96,16 @@ class MCPClient:
         self.transport_type = transport_type
         self.env = env or {}
         self.transport_kwargs = transport_kwargs
+        # 先把路径、URL、命令或FastMCP实例转换成SDK可识别的传输配置；尚未进入连接上下文。
         self.server_source = self._prepare_server_source(server_source)
         self.client: Optional[Client] = None
         self._context_manager = None
 
     def _prepare_server_source(self, server_source: Union[str, List[str], FastMCP, Dict[str, Any]]):
         """准备服务器源，根据类型创建合适的传输配置"""
-        # 学习提示：按实例、字典、URL、.py 路径、命令列表顺序分派；transport_type 目前只在 URL 分支选择 SSE/HTTP。
         
         # 1. FastMCP 实例 - 内存传输
+        # 同进程FastMCP对象走内存传输，适合本地集成；不会按URL访问远程服务器。
         if isinstance(server_source, FastMCP):
             print(f"🧠 使用内存传输: {server_source.name}")
             return server_source
@@ -119,6 +119,7 @@ class MCPClient:
         if isinstance(server_source, str) and (server_source.startswith("http://") or server_source.startswith("https://")):
             transport_type = self.transport_type or "http"
             print(f"🌐 使用 {transport_type.upper()} 传输: {server_source}")
+            # URL默认使用Streamable HTTP；显式sse才选SSETransport，实际网络生命周期由SDK负责。
             if transport_type == "sse":
                 return SSETransport(url=server_source, **self.transport_kwargs)
             else:
@@ -128,6 +129,7 @@ class MCPClient:
         if isinstance(server_source, str) and server_source.endswith(".py"):
             print(f"🐍 使用 Stdio 传输 (Python): {server_source}")
             return PythonStdioTransport(
+                # Python脚本路径交给stdio传输，连接时可能启动真实进程；env是传给该进程的环境参数。
                 script_path=server_source,
                 args=self.server_args,
                 env=self.env if self.env else None,
@@ -161,12 +163,12 @@ class MCPClient:
 
     def _create_transport_from_config(self, config: Dict[str, Any]):
         """从配置字典创建传输"""
-        # 学习提示：字典中的 env/cwd/headers/auth 直接交给 SDK；首个 args 是 .py 时走 Python 专用传输，不使用 command 选择其他解释器。
         transport_type = config.get("transport", "stdio")
         
         if transport_type == "stdio":
             # 检查是否是 Python 脚本
             args = config.get("args", [])
+            # 首个参数是Python文件时使用Python专用传输，这个分支没有用command选择另一个解释器。
             if args and args[0].endswith(".py"):
                 return PythonStdioTransport(
                     script_path=args[0],
@@ -204,32 +206,32 @@ class MCPClient:
 
     async def __aenter__(self):
         """异步上下文管理器入口"""
-        # 学习提示：必须在异步上下文内使用工具等方法；SDK 负责连接生命周期，stdio 路径可能启动真实子进程。
         print("🔗 连接到 MCP 服务器...")
         self.client = Client(self.server_source)
         self._context_manager = self.client
+        # 真正进入SDK连接上下文；完成后list/call/read等方法才有可用客户端。
         await self._context_manager.__aenter__()
         print("✅ 连接成功！")
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """异步上下文管理器出口"""
-        # 学习提示：先让 SDK 清理，再清空本地引用；若 SDK 清理抛异常，后面的引用重置不会执行。
         if self._context_manager:
             await self._context_manager.__aexit__(exc_type, exc_val, exc_tb)
+            # SDK清理成功后清空引用，防止退出后继续使用旧连接；若上一步抛错不会到达此处。
             self.client = None
             self._context_manager = None
         print("🔌 连接已断开")
 
     async def list_tools(self) -> List[Dict[str, Any]]:
         """列出所有可用的工具"""
-        # 学习提示：仅发现名称、说明和 input_schema，不执行工具；工具 schema 不等于授权执行其动作。
         if not self.client:
             raise RuntimeError("Client not connected. Use 'async with client:' context manager.")
 
         result = await self.client.list_tools()
 
         # 处理不同的返回格式
+        # 兼容对象内含tools列表与直接返回列表两种SDK结果，统一为下方字典列表。
         if hasattr(result, 'tools'):
             tools = result.tools
         elif isinstance(result, list):
@@ -248,17 +250,18 @@ class MCPClient:
 
     async def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Any:
         """调用 MCP 工具"""
-        # 学习提示：会触发服务端真实处理器。当前包装只提取 content 中 text/data，未保留完整 isError/structuredContent 等结果信息。
         if not self.client:
             raise RuntimeError("Client not connected. Use 'async with client:' context manager.")
 
         result = await self.client.call_tool(tool_name, arguments)
 
         # 解析结果 - FastMCP 返回 ToolResult 对象
+        # 当前只提取内容块，未保留完整isError/structuredContent等字段；非空文本不一定表示业务成功。
         if hasattr(result, 'content') and result.content:
             if len(result.content) == 1:
                 content = result.content[0]
                 if hasattr(content, 'text'):
+                    # 只有一个文本内容块时返回字符串，多块时返回列表，所以调用方不能总假设同一种返回类型。
                     return content.text
                 elif hasattr(content, 'data'):
                     return content.data
@@ -270,7 +273,6 @@ class MCPClient:
 
     async def list_resources(self) -> List[Dict[str, Any]]:
         """列出所有可用的资源"""
-        # 学习提示：当前按 result.resources 读取列表；实际 SDK 若直接返回 list，需要另行适配，不能仅因 list_tools 已兼容就推定这里兼容。
         if not self.client:
             raise RuntimeError("Client not connected. Use 'async with client:' context manager.")
 
@@ -282,12 +284,12 @@ class MCPClient:
                 "description": resource.description or "",
                 "mime_type": getattr(resource, 'mimeType', None)
             }
+            # 此处直接假设结果具有resources属性，和list_tools的列表兼容分支不同。
             for resource in result.resources
         ]
 
     async def read_resource(self, uri: str) -> Any:
         """读取资源内容"""
-        # 学习提示：资源 URI 交给服务端解析；这里只提取 text/blob，不自动下载 URI、解码二进制或保存文件。
         if not self.client:
             raise RuntimeError("Client not connected. Use 'async with client:' context manager.")
 
@@ -300,6 +302,7 @@ class MCPClient:
                 if hasattr(content, 'text'):
                     return content.text
                 elif hasattr(content, 'blob'):
+                    # 原样返回二进制表示，没有在这里解码或写入本地文件。
                     return content.blob
             return [
                 getattr(c, 'text', getattr(c, 'blob', str(c)))
@@ -309,7 +312,6 @@ class MCPClient:
 
     async def list_prompts(self) -> List[Dict[str, Any]]:
         """列出所有可用的提示词模板"""
-        # 学习提示：列出模板及参数描述，不代表生成模板内容；当前按 result.prompts 属性读取结果。
         if not self.client:
             raise RuntimeError("Client not connected. Use 'async with client:' context manager.")
 
@@ -325,10 +327,10 @@ class MCPClient:
 
     async def get_prompt(self, prompt_name: str, arguments: Optional[Dict[str, str]] = None) -> List[Dict[str, Any]]:
         """获取提示词内容"""
-        # 学习提示：获取模板渲染后的消息列表；返回消息后仍需应用决定是否交给大模型，SDK 不在这里完成模型推理。
         if not self.client:
             raise RuntimeError("Client not connected. Use 'async with client:' context manager.")
 
+        # 让服务端按参数生成模板消息；拿到消息后仍需应用自行交给大模型。
         result = await self.client.get_prompt(prompt_name, arguments or {})
 
         # 解析提示词消息
@@ -344,11 +346,11 @@ class MCPClient:
 
     async def ping(self) -> bool:
         """测试服务器连接"""
-        # 学习提示：成功只表示 SDK ping 未抛异常，不验证所有工具的参数、权限和业务执行结果。
         if not self.client:
             raise RuntimeError("Client not connected. Use 'async with client:' context manager.")
         
         try:
+            # 仅检查协议端点能响应ping，不验证每个业务工具都可用。
             await self.client.ping()
             return True
         except Exception:
@@ -356,7 +358,6 @@ class MCPClient:
 
     def get_transport_info(self) -> Dict[str, Any]:
         """获取传输信息"""
-        # 学习提示：根据本地 client 引用与 transport 属性描述状态，没有执行额外探活；connected 不等于远端仍健康。
         if not self.client:
             return {"status": "not_connected"}
         

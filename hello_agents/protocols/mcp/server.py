@@ -33,7 +33,7 @@ class MCPServer:
             name: 服务器名称
             description: 服务器描述
         """
-        # 学习提示：创建 SDK 服务对象并保存名称/说明；description 当前只保存在包装对象，未传入 FastMCP 构造器。
+        # 构造SDK服务对象；description另存在本包装器上，当前未传给FastMCP构造器。
         self.mcp = FastMCP(name=name)
         self.name = name
         self.description = description or f"{name} MCP Server"
@@ -52,9 +52,9 @@ class MCPServer:
             name: 工具名称（可选，默认使用函数名）
             description: 工具描述（可选，默认使用函数文档字符串）
         """
-        # 学习提示：把现有函数交给 SDK 装饰器注册，使用签名/docstring 等描述能力；此时不执行函数体。
         # 使用装饰器注册工具
         if name or description:
+            # 将业务函数交给SDK装饰器登记，并非现在就执行func；实际调用发生在收到请求后。
             self.mcp.tool(name=name, description=description)(func)
         else:
             self.mcp.tool()(func)
@@ -75,8 +75,8 @@ class MCPServer:
             name: 资源名称（可选）
             description: 资源描述（可选）
         """
-        # 学习提示：当前只转发 uri 与 func，签名中的 name/description 没有继续传给 SDK。
         # 使用装饰器注册资源
+        # 当前只转发uri和func，参数name/description没有继续传给SDK资源注册函数。
         if uri:
             self.mcp.resource(uri)(func)
         else:
@@ -96,7 +96,6 @@ class MCPServer:
             name: 提示词名称（可选）
             description: 提示词描述（可选）
         """
-        # 学习提示：注册可按参数生成消息的模板函数；与工具执行、资源读取属于不同能力入口。
         # 使用装饰器注册提示词
         if name or description:
             self.mcp.prompt(name=name, description=description)(func)
@@ -123,7 +122,7 @@ class MCPServer:
             # SSE 传输
             server.run(transport="sse", host="0.0.0.0", port=8081)
         """
-        # 学习提示：传输名与 kwargs 原样交给 FastMCP.run；stdio 与 HTTP 的进程、监听和关闭行为由 SDK 实现决定。
+        # 把stdio/http/sse等选项交给SDK启动服务，监听、协商和关闭细节不在本包装器实现。
         self.mcp.run(transport=transport, **kwargs)
         
     def get_info(self) -> Dict[str, Any]:
@@ -133,7 +132,6 @@ class MCPServer:
         Returns:
             服务器信息字典
         """
-        # 学习提示：返回本地配置摘要，不发送 initialize，也不表示客户端已经发现工具或协商成功。
         return {
             "name": self.name,
             "description": self.description,
@@ -146,42 +144,36 @@ class MCPServerBuilder:
     """MCP 服务器构建器，提供链式 API"""
 
     def __init__(self, name: str, description: Optional[str] = None):
-        # 学习提示：立即创建同一个服务对象；后续 with_* 都往此对象注册能力。
         self.server = MCPServer(name, description)
         
     def with_tool(self, func: Callable, name: Optional[str] = None, description: Optional[str] = None) -> 'MCPServerBuilder':
         """添加工具（链式调用）"""
-        # 学习提示：注册后返回 self，所以可连续调用 builder.with_tool(...).with_prompt(...)。
         self.server.add_tool(func, name, description)
+        # 返回构建器本身以支持连续注册；build返回同一个服务对象，未创建副本。
         return self
         
     def with_resource(self, func: Callable, uri: Optional[str] = None, name: Optional[str] = None, description: Optional[str] = None) -> 'MCPServerBuilder':
         """添加资源（链式调用）"""
-        # 学习提示：链式注册资源，实际参数处理仍由 MCPServer.add_resource 决定。
         self.server.add_resource(func, uri, name, description)
         return self
         
     def with_prompt(self, func: Callable, name: Optional[str] = None, description: Optional[str] = None) -> 'MCPServerBuilder':
         """添加提示词（链式调用）"""
-        # 学习提示：链式注册提示模板，不触发模型调用。
         self.server.add_prompt(func, name, description)
         return self
         
     def build(self) -> MCPServer:
         """构建服务器"""
-        # 学习提示：直接返回已持有的 server，不复制服务，也不启动传输。
         return self.server
         
     def run(self):
         """构建并运行服务器"""
-        # 学习提示：这里只采用默认 stdio 启动；若需要传输参数，可先 build 再调用服务的 run。
         self.server.run()
 
 
 # 示例：创建一个简单的 MCP 服务器
 def create_example_server() -> MCPServer:
     """创建一个示例 MCP 服务器"""
-    # 学习提示：只构建并注册计算/问候示例；调用方显式 run 后才对外提供服务。
     server = MCPServer(
         name="example-server",
         description="A simple example MCP server with calculator and greeting tools"
@@ -194,12 +186,12 @@ def create_example_server() -> MCPServer:
         Args:
             expression: 要计算的数学表达式，例如 "2 + 2" 或 "10 * 5"
         """
-        # 学习提示：字符白名单后仍调用 eval，未限制表达式长度或计算复杂度；仅作教学示例，不能视为完整隔离。
         try:
             # 安全的表达式求值（仅支持基本运算）
             allowed_chars = set("0123456789+-*/() .")
             if not all(c in allowed_chars for c in expression):
                 return f"Error: Invalid characters in expression"
+            # 白名单之后仍会执行计算，未限制表达式规模和计算成本；示例不提供独立执行隔离。
             result = eval(expression)
             return f"Result: {result}"
         except Exception as e:
@@ -214,7 +206,6 @@ def create_example_server() -> MCPServer:
         Args:
             name: 要问候的人的名字
         """
-        # 学习提示：直接按输入拼接文本，不请求大模型；返回值由 SDK 转为工具响应。
         return f"Hello, {name}! Welcome to the MCP server example."
     
     server.add_tool(greet, name="greet", description="Generate a friendly greeting")
